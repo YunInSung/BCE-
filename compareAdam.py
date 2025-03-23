@@ -1,34 +1,23 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import sys
 import time
 
-N = 50000          # 데이터 샘플 수
+N = 10000         # 데이터 샘플 수
 D = 10            # 입력 차원
 hidden_dim = 25
 size = N
 epsilon = 1e-9
-learn = 0.03
-iterator = 100
+iterator = 75
 ######################################################################################################
 ######################################################################################################
 ######################################################################################################
+# np.seterr(over='raise', under='raise', divide='raise', invalid='raise')
 def sigmoid(x) :
-    return 1 / (1 + np.exp(-x))
-
-def sigmoid_dx(x) :
-    return np.exp(-x) / (1 + np.exp(-x))**2
-
-def sigmoid_d2x(x) :
-    return (np.exp(-2 * x) - np.exp(-x)) / (1 + np.exp(-x))**3
-
-# def relu(x):
-#     return np.maximum(0, x)
-
-# def relu_deriv(x):
-#     return (x > 0).astype(np.float32)
-
-# def relu_deriv2(x):
-#     return 0
+    try:
+        return 1 / (1 + np.exp(-x))
+    except FloatingPointError:
+        sys.exit("Overflow encountered in exp, terminating program.")
 
 def relu(x, alpha=0.01):
     return np.where(x >= 0, x, alpha * x)
@@ -39,23 +28,14 @@ def relu_deriv(x, alpha=0.01):
 def relu_deriv2(x, alpha=0.01):
     return np.zeros_like(x)
 
-######################################################################################################
-######################################################################################################
-######################################################################################################
+# def relu(x):
+#     return np.maximum(0, x)
 
-def g_func(x) :
-    return sigmoid_dx(x) / (sigmoid(x) + epsilon)
-def g_func_dx(x) :
-    return (sigmoid_d2x(x) * sigmoid(x) - sigmoid_dx(x) ** 2) / (sigmoid(x) ** 2 + epsilon)
-def h_func(x) :
-    return sigmoid_dx(x) / (1 - sigmoid(x) + epsilon)
-def h_func_dx(x) :
-    return (sigmoid_d2x(x) * (1 -  sigmoid(x)) + sigmoid_dx(x) ** 2) / ((1 - sigmoid(x)) ** 2 + epsilon)
+# def relu_deriv(x):
+#     return (x > 0).astype(x.dtype)
 
-def zeta_dx(z, y) : 
-    return (y * g_func(z) - (1 - y) * h_func(z))
-def zeta_d2x(z, y) :
-    return (y * g_func_dx(z) - (1 - y) * h_func_dx(z))
+# def relu_deriv2(x):
+#     return np.zeros_like(x)
 
 #####################################
 #############  W2 b2  ###############
@@ -73,7 +53,7 @@ def H_matirx2_r(h, row, d2Z2, A1i, grad_W2_r):
     matrix = np.hstack([grad_W2_r, np.sum(d2Z2[row] * A1i, axis = 1).reshape(m+1,1) / N])
     return matrix
 
-def L_matrix2_r(h, P, row, dW2, db2, d2Z2, A1i, grad_W2_r):
+def L_matrix2_r(h, P, row, dW2, db2, d2Z2, A1i, grad_W2_r, learn):
     m = h.shape[0]
     v0 = P[row]
     W2_r =  dW2[row] * learn
@@ -100,7 +80,7 @@ def H_matirx1_r(theta, X, Xi, grad_W1_r):
     matrix = np.hstack([grad_W1_r, np.sum(theta * Xi, axis = 1).reshape(n + 1, 1) / N])
     return matrix
 
-def L_matrix1_r(X, P, theta, dW1, db1, row, Xi, grad_W1_r):
+def L_matrix1_r(X, P, theta, dW1, db1, row, Xi, grad_W1_r, learn):
     n = X.shape[0]
     v0 = P[row]
     W1_r =  dW1[row] * learn
@@ -111,7 +91,7 @@ def L_matrix1_r(X, P, theta, dW1, db1, row, Xi, grad_W1_r):
     matrix = np.append(matrix, tmp).reshape(1, n + 1)
     return matrix
 
-def P_matrix(X, Y, W1, b1, W2, b2):
+def P_matrix(X, Y, W1, b1, W2, b2, learn):
     matrix2 = 0
     matrix1 = 0
     p = Y.shape[0]
@@ -148,7 +128,7 @@ def P_matrix(X, Y, W1, b1, W2, b2):
         theta = (J_1[row] * (df1[row] ** 2)) + (J_2[row] * d2f1[row])
         grad_W1_r = grad_W1_func_r(theta, X, Xi)
         H_r = H_matirx1_r(theta, X, Xi, grad_W1_r)
-        L_r = L_matrix1_r(X, P, theta, dW1, db1, row, Xi, grad_W1_r)
+        L_r = L_matrix1_r(X, P, theta, dW1, db1, row, Xi, grad_W1_r, learn)
         P_r = L_r.dot(np.linalg.pinv(H_r))
         if row == 0 :
             matrix1 = np.vstack([P_r])
@@ -163,7 +143,7 @@ def P_matrix(X, Y, W1, b1, W2, b2):
     for row in range(0,p):
         grad_W2_r = grad_W2_func_r(A1, row, d2Z2, A1i)
         H_r = H_matirx2_r(A1, row, d2Z2, A1i, grad_W2_r)
-        L_r = L_matrix2_r(A1, P, row, dW2, db2, d2Z2, A1i, grad_W2_r)
+        L_r = L_matrix2_r(A1, P, row, dW2, db2, d2Z2, A1i, grad_W2_r, learn)
         P_r = L_r.dot(np.linalg.pinv(H_r))
         if row == 0 :
             matrix2 = np.vstack([P_r])
@@ -174,12 +154,19 @@ def P_matrix(X, Y, W1, b1, W2, b2):
     return cpW1, cpb1, cpW2, cpb2
 
 def ret_weight(X, Y, W1, b1, W2, b2, iter=1) :
+    prev_loss = 1e+6
+    loss = 1
     cpW1 = W1.copy()
     cpb1 = b1.copy()
     cpW2 = W2.copy()
     cpb2 = b2.copy()
+    prevW1, prevb1, prevW2, prevb2 = cpW1, cpb1, cpW2, cpb2
+    learn = 0.05
     for it in range(0, iter) :
         ###############
+        if loss < 0.0006 :
+            break
+        cpW1, cpb1, cpW2, cpb2 = P_matrix(X, Y, prevW1, prevb1, prevW2, prevb2, learn)
         y = Y.T
         Z1 = (X.T).dot(cpW1.T) + cpb1.T
         h = relu(Z1)
@@ -187,25 +174,28 @@ def ret_weight(X, Y, W1, b1, W2, b2, iter=1) :
         y_pred = sigmoid(Z2)
         loss = -np.mean(y * np.log(y_pred + 1e-8) + (1 - y) * np.log(1 - y_pred + 1e-8))
         print(f'loss_Z-{it} : {loss}\n')
-        if loss < 0.0005 :
-            break
-        cpW1, cpb1, cpW2, cpb2 = P_matrix(X, Y, cpW1, cpb1, cpW2, cpb2)
-    return cpW1, cpb1, cpW2, cpb2
+        if loss > prev_loss :
+            learn *= 0.95
+            continue
+        prevW1, prevb1, prevW2, prevb2 = cpW1, cpb1, cpW2, cpb2
+        prev_loss = loss
+    return prevW1, prevb1, prevW2, prevb2
 
 
 
 ############################################################################################################################################
 ############################################################################################################################################
 ############################################################################################################################################
-
 
 
 # 1. 데이터 생성 및 레이블 만들기
 np.random.seed()
 # 8차원 입력 데이터를 무작위 생성
 X = np.random.randn(N, D)
+# X = np.random.beta(0.5, 1.0, size=(N, D))
 
 true_w = np.random.randn(D)
+# true_w = np.random.gamma(2, 1, size=D)
 true_b = 0.7
 
 # 선형 결합 후 시그모이드로 확률 계산하여 이진 레이블 생성
@@ -215,25 +205,38 @@ y = (probabilities > 0.5).astype(np.float32).reshape(-1, 1)  # shape: (N, 1)
 
 # 3. 모델 파라미터 초기화 및 학습 하이퍼파라미터 설정
 # 입력 -> 은닉층 가중치와 bias (W1: (D, hidden_dim), b1: (1, hidden_dim))
-l = 0.5
-W1 = np.random.randn(D, hidden_dim) * l
-b1 = np.random.randn(1, hidden_dim) * l
+# l = 0.1
+# W1 = np.random.randn(D, hidden_dim) * l
+# b1 = np.random.randn(1, hidden_dim) * l
 
 
-# 은닉층 -> 출력층 가중치와 bias (W2: (hidden_dim, 1), b2: (1, 1))
-W2 = np.random.randn(hidden_dim, 1) * l
-b2 = np.random.randn(1, 1) * l
+# # 은닉층 -> 출력층 가중치와 bias (W2: (hidden_dim, 1), b2: (1, 1))
+# W2 = np.random.randn(hidden_dim, 1) * l
+# b2 = np.random.randn(1, 1) * l
+
+W1 = np.random.randn(D, hidden_dim) * np.sqrt(2.0 / D)
+b1 = np.zeros((1, hidden_dim))  # 보통 bias는 0으로 초기화합니다.
+
+W2 = np.random.randn(hidden_dim, 1) * np.sqrt(2.0 / hidden_dim)
+b2 = np.zeros((1, 1))
 
 
-##########################################################################################################
-start = time.perf_counter()
-###########################################################################################################
 Z1_ = X.dot(W1) + b1         # (N, hidden_dim)
 A1_ = relu(Z1_)               # (N, hidden_dim)
 Z2_ = A1_.dot(W2) + b2        # (N, 1)
 y_pred = sigmoid(Z2_)        # (N, 1)
 loss0 = -np.mean(y * np.log(y_pred + 1e-8) + (1 - y) * np.log(1 - y_pred + 1e-8))
+print(f'loss0 = {loss0}')
+##########################################################################################################
+##########################################################################################################
+##########################################################################################################
+start = time.perf_counter()
+###########################################################################################################
 _W1, _b1, _W2, _b2 = ret_weight(X.T, y.T, W1.T, b1.T, W2.T, b2.T, iter=iterator)
+###########################################################################################################
+end = time.perf_counter()
+print("나의 코드 실행 시간: {:.4f} 초".format(end - start))
+###########################################################################################################
 Z1_ = X.dot(_W1.T) + _b1.T
 h_ = relu(Z1_)
 Z2_ = h_.dot(_W2.T) + _b2
@@ -241,10 +244,8 @@ y_pred_ = sigmoid(Z2_)
 loss_ = -np.mean(y * np.log(y_pred_ + 1e-8) + (1 - y) * np.log(1 - y_pred_ + 1e-8))
 # print(f'W1 :\n{_W1}\nb1 :\n{_b1}\nW2 :\n{_W2}\nb2 :\n{_b2}')
 print(f'loss : {loss_}')
-###########################################################################################################
-end = time.perf_counter()
-print("나의 코드 실행 시간: {:.4f} 초".format(end - start))
-###########################################################################################################
+##########################################################################################################
+##########################################################################################################
 
 
 # 3. Adam 하이퍼파라미터 설정
@@ -321,10 +322,10 @@ for epoch in range(1, epochs+1):
     b1 -= lr * vb1_corr / (np.sqrt(vb1_v_corr) + epsilon)
     W2 -= lr * mW2_corr / (np.sqrt(vW2_corr) + epsilon)
     b2 -= lr * vb2_corr / (np.sqrt(vb2_v_corr) + epsilon)
-    
     if epoch % 200 == 0:
         print(f"Epoch {epoch}, Loss: {loss:.4f}")
-
+    if epoch == epochs :
+        print(f"Epoch {epoch}, Loss: {loss:.4f}")
 end = time.perf_counter()
 print("Adam 학습 코드 실행 시간: {:.4f} 초".format(end - start))
 print("학습 완료")
@@ -335,7 +336,7 @@ print("학습 완료")
 
 
 N_val = int(N * 0.5)
-X_val = np.random.randn(N_val, D)
+X_val =np.random.randn(N_val, D)
 logits_val = X_val.dot(true_w) + true_b
 probabilities_val = 1 / (1 + np.exp(-logits_val))
 y_val = (probabilities_val > 0.5).astype(np.float32).reshape(-1, 1)
@@ -356,3 +357,4 @@ Z2_val = A1_val.dot(_W2.T) + _b2
 y_pred_val = sigmoid(Z2_val)
 loss_ = -np.mean(y_val * np.log(y_pred_val + 1e-8) + (1 - y_val) * np.log(1 - y_pred_val + 1e-8))
 print(f'Validatio loss in my model : {loss_}')
+print(f'data : {N}')
