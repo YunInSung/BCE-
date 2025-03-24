@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import sys
 import time
 
-N = 5000          # 데이터 샘플 수
+N = 10000         # 데이터 샘플 수
 D = 10            # 입력 차원
 hidden_dim = 25
 size = N
@@ -19,25 +19,25 @@ def sigmoid(x) :
     except FloatingPointError:
         sys.exit("Overflow encountered in exp, terminating program.")
 
-def relu(x, alpha=0.0005):
-    return np.where(x >= 0, x, alpha * x)
+# def relu(x, alpha=0.001):
+#     return np.where(x >= 0, x, alpha * x)
 
-def relu_deriv(x, alpha=0.0005):
-    return np.where(x >= 0, 1, alpha)
+# def relu_deriv(x, alpha=0.001):
+#     return np.where(x >= 0, 1, alpha)
 
-def relu_deriv2(x, alpha=0.0005):
-    return np.zeros_like(x)
+# def relu_deriv2(x, alpha=0.001):
+#     return np.zeros_like(x)
 
-# def relu(x, alpha=0.0005):
-#     return np.where(x >= 0, x, alpha * (np.exp(x) - 1))
+def relu(x, alpha=0.001):
+    return np.where(x >= 0, x, alpha * (np.exp(x) - 1))
 
-# def relu_deriv(x, alpha=0.0005):
-#     # x = 0에서는 1로 정의 (일반적인 구현)
-#     return np.where(x >= 0, 1, alpha * np.exp(x))
+def relu_deriv(x, alpha=0.001):
+    # x = 0에서는 1로 정의 (일반적인 구현)
+    return np.where(x >= 0, 1, alpha * np.exp(x))
 
-# def relu_deriv2(x, alpha=0.0005):
-#     # x >= 0에서는 0, x < 0에서는 alpha * exp(x)
-#     return np.where(x >= 0, 0, alpha * np.exp(x))
+def relu_deriv2(x, alpha=0.001):
+    # x >= 0에서는 0, x < 0에서는 alpha * exp(x)
+    return np.where(x >= 0, 0, alpha * np.exp(x))
 
 #####################################
 #############  W2 b2  ###############
@@ -198,173 +198,173 @@ def ret_weight(X, Y, W1, b1, W2, b2, loss0, iter=1) :
 
 # 1. 데이터 생성 및 레이블 만들기
 # for i in range(1, 1501) : 
-for i in [1047, 1092, 1127, 1176, 1222, 1245, 1285, 1308, 1360, 1417, 1476] : 
-    np.random.seed(i)
-    # 8차원 입력 데이터를 무작위 생성
-    X = np.random.randn(N, D)
-    # X = np.random.beta(0.5, 1.0, size=(N, D))
+# for i in [1047, 1092, 1127, 1176, 1222, 1245, 1285, 1308, 1360, 1417, 1476] : 
+np.random.seed()
+# 8차원 입력 데이터를 무작위 생성
+X = np.random.randn(N, D)
+# X = np.random.beta(0.5, 1.0, size=(N, D))
 
-    true_w = np.random.randn(D)
-    # true_w = np.random.gamma(2, 1, size=D)
-    true_b = 0.7
+true_w = np.random.randn(D)
+# true_w = np.random.gamma(2, 1, size=D)
+true_b = 0.7
 
-    # 선형 결합 후 시그모이드로 확률 계산하여 이진 레이블 생성
-    logits = X.dot(true_w) + true_b
-    probabilities = 1 / (1 + np.exp(-logits))
-    y = (probabilities > 0.5).astype(np.float32).reshape(-1, 1)  # shape: (N, 1)
+# 선형 결합 후 시그모이드로 확률 계산하여 이진 레이블 생성
+logits = X.dot(true_w) + true_b
+probabilities = 1 / (1 + np.exp(-logits))
+y = (probabilities > 0.5).astype(np.float32).reshape(-1, 1)  # shape: (N, 1)
 
-    # 3. 모델 파라미터 초기화 및 학습 하이퍼파라미터 설정
-    # 입력 -> 은닉층 가중치와 bias (W1: (D, hidden_dim), b1: (1, hidden_dim))
-    # l = 1
-    # W1 = np.random.randn(D, hidden_dim) * l
-    # b1 = np.random.randn(1, hidden_dim) * l
-
-
-    # # 은닉층 -> 출력층 가중치와 bias (W2: (hidden_dim, 1), b2: (1, 1))
-    # W2 = np.random.randn(hidden_dim, 1) * l
-    # b2 = np.random.randn(1, 1) * l
-
-    W1 = np.random.randn(D, hidden_dim) * np.sqrt(2.0 / D)
-    b1 = np.zeros((1, hidden_dim))  # 보통 bias는 0으로 초기화합니다.
-
-    W2 = np.random.randn(hidden_dim, 1) * np.sqrt(2.0 / hidden_dim)
-    b2 = np.zeros((1, 1))
+# 3. 모델 파라미터 초기화 및 학습 하이퍼파라미터 설정
+# 입력 -> 은닉층 가중치와 bias (W1: (D, hidden_dim), b1: (1, hidden_dim))
+# l = 1
+# W1 = np.random.randn(D, hidden_dim) * l
+# b1 = np.random.randn(1, hidden_dim) * l
 
 
-    Z1_ = X.dot(W1) + b1         # (N, hidden_dim)
-    A1_ = relu(Z1_)               # (N, hidden_dim)
-    Z2_ = A1_.dot(W2) + b2        # (N, 1)
-    y_pred = sigmoid(Z2_)        # (N, 1)
-    loss0 = -np.mean(y * np.log(y_pred + 1e-8) + (1 - y) * np.log(1 - y_pred + 1e-8))
-    print(f'loss0 = {loss0}')
-    ##########################################################################################################
-    ##########################################################################################################
-    ##########################################################################################################
-    start = time.perf_counter()
-    ###########################################################################################################
-    _W1, _b1, _W2, _b2 = ret_weight(X.T, y.T, W1.T, b1.T, W2.T, b2.T, loss0, iter=iterator)
-    ###########################################################################################################
-    end = time.perf_counter()
-    print("나의 코드 실행 시간: {:.4f} 초".format(end - start))
-    ###########################################################################################################
-    Z1_ = X.dot(_W1.T) + _b1.T
-    h_ = relu(Z1_)
-    Z2_ = h_.dot(_W2.T) + _b2
-    y_pred_ = sigmoid(Z2_)
-    loss_ = -np.mean(y * np.log(y_pred_ + 1e-8) + (1 - y) * np.log(1 - y_pred_ + 1e-8))
-    # print(f'W1 :\n{_W1}\nb1 :\n{_b1}\nW2 :\n{_W2}\nb2 :\n{_b2}')
-    print(f'loss : {loss_}')
-    ##########################################################################################################
-    ##########################################################################################################
+# # 은닉층 -> 출력층 가중치와 bias (W2: (hidden_dim, 1), b2: (1, 1))
+# W2 = np.random.randn(hidden_dim, 1) * l
+# b2 = np.random.randn(1, 1) * l
+
+W1 = np.random.randn(D, hidden_dim) * np.sqrt(2.0 / D)
+b1 = np.zeros((1, hidden_dim))  # 보통 bias는 0으로 초기화합니다.
+
+W2 = np.random.randn(hidden_dim, 1) * np.sqrt(2.0 / hidden_dim)
+b2 = np.zeros((1, 1))
 
 
-    # 3. Adam 하이퍼파라미터 설정
-    lr = 0.03
-    epochs = 100
-    beta1 = 0.9
-    beta2 = 0.999
-    epsilon = 1e-8
-
-    # Adam 모멘텀 변수 초기화 (모든 파라미터와 동일한 shape)
-    mW1 = np.zeros_like(W1)
-    vb1 = np.zeros_like(b1)
-    mW2 = np.zeros_like(W2)
-    vb2 = np.zeros_like(b2)
-    vW1 = np.zeros_like(W1)
-    vb1_v = np.zeros_like(b1)  # 이름을 다르게 해서 혼동 방지: b1의 2차 모멘트
-    vW2 = np.zeros_like(W2)
-    vb2_v = np.zeros_like(b2)
-
-    loss_history = []
-
-    start = time.perf_counter()
-    for epoch in range(1, epochs+1):
-        # 순전파: 은닉층
-        Z1 = X.dot(W1) + b1         # (N, hidden_dim)
-        A1 = relu(Z1)               # (N, hidden_dim)
-        # 순전파: 출력층
-        Z2 = A1.dot(W2) + b2        # (N, 1)
-        y_pred = sigmoid(Z2)        # (N, 1)
-        
-        # 손실 함수: 이진 크로스 엔트로피
-        loss = -np.mean(y * np.log(y_pred + 1e-8) + (1 - y) * np.log(1 - y_pred + 1e-8))
-        loss_history.append(loss)
-        
-        # 역전파: 출력층
-        dZ2 = y_pred - y            # (N, 1)
-        dW2 = A1.T.dot(dZ2) / N      # (hidden_dim, 1)
-        db2 = np.sum(dZ2, axis=0, keepdims=True) / N  # (1, 1)
-        
-        # 역전파: 은닉층
-        dA1 = dZ2.dot(W2.T)         # (N, hidden_dim)
-        dZ1 = dA1 * relu_deriv(Z1)  # (N, hidden_dim)
-        dW1 = X.T.dot(dZ1) / N       # (D, hidden_dim)
-        db1 = np.sum(dZ1, axis=0, keepdims=True) / N  # (1, hidden_dim)
-        
-        # Adam 업데이트 (시간 단계 t = epoch)
-        t = epoch
-        
-        # 1차 모멘트 업데이트
-        mW1 = beta1 * mW1 + (1 - beta1) * dW1
-        mW2 = beta1 * mW2 + (1 - beta1) * dW2
-        vb1 = beta1 * vb1 + (1 - beta1) * db1
-        vb2 = beta1 * vb2 + (1 - beta1) * db2
-        
-        # 2차 모멘트 업데이트
-        vW1 = beta2 * vW1 + (1 - beta2) * (dW1 ** 2)
-        vW2 = beta2 * vW2 + (1 - beta2) * (dW2 ** 2)
-        vb1_v = beta2 * vb1_v + (1 - beta2) * (db1 ** 2)
-        vb2_v = beta2 * vb2_v + (1 - beta2) * (db2 ** 2)
-        
-        # 편향 보정 (Bias correction)
-        mW1_corr = mW1 / (1 - beta1 ** t)
-        mW2_corr = mW2 / (1 - beta1 ** t)
-        vb1_corr = vb1 / (1 - beta1 ** t)
-        vb2_corr = vb2 / (1 - beta1 ** t)
-        
-        vW1_corr = vW1 / (1 - beta2 ** t)
-        vW2_corr = vW2 / (1 - beta2 ** t)
-        vb1_v_corr = vb1_v / (1 - beta2 ** t)
-        vb2_v_corr = vb2_v / (1 - beta2 ** t)
-        
-        # 파라미터 업데이트
-        W1 -= lr * mW1_corr / (np.sqrt(vW1_corr) + epsilon)
-        b1 -= lr * vb1_corr / (np.sqrt(vb1_v_corr) + epsilon)
-        W2 -= lr * mW2_corr / (np.sqrt(vW2_corr) + epsilon)
-        b2 -= lr * vb2_corr / (np.sqrt(vb2_v_corr) + epsilon)
-        if epoch % 200 == 0:
-            print(f"Epoch {epoch}, Loss: {loss:.4f}")
-        if epoch == epochs :
-            print(f"Epoch {epoch}, Loss: {loss:.4f}")
-    end = time.perf_counter()
-    print("Adam 학습 코드 실행 시간: {:.4f} 초".format(end - start))
-    print("학습 완료")
-    # print("학습된 W1:\n", W1)
-    # print("학습된 b1:\n", b1)
-    # print("학습된 W2:\n", W2)
-    # print("학습된 b2:\n", b2)
+Z1_ = X.dot(W1) + b1         # (N, hidden_dim)
+A1_ = relu(Z1_)               # (N, hidden_dim)
+Z2_ = A1_.dot(W2) + b2        # (N, 1)
+y_pred = sigmoid(Z2_)        # (N, 1)
+loss0 = -np.mean(y * np.log(y_pred + 1e-8) + (1 - y) * np.log(1 - y_pred + 1e-8))
+print(f'loss0 = {loss0}')
+##########################################################################################################
+##########################################################################################################
+##########################################################################################################
+start = time.perf_counter()
+###########################################################################################################
+_W1, _b1, _W2, _b2 = ret_weight(X.T, y.T, W1.T, b1.T, W2.T, b2.T, loss0, iter=iterator)
+###########################################################################################################
+end = time.perf_counter()
+print("나의 코드 실행 시간: {:.4f} 초".format(end - start))
+###########################################################################################################
+Z1_ = X.dot(_W1.T) + _b1.T
+h_ = relu(Z1_)
+Z2_ = h_.dot(_W2.T) + _b2
+y_pred_ = sigmoid(Z2_)
+loss_ = -np.mean(y * np.log(y_pred_ + 1e-8) + (1 - y) * np.log(1 - y_pred_ + 1e-8))
+# print(f'W1 :\n{_W1}\nb1 :\n{_b1}\nW2 :\n{_W2}\nb2 :\n{_b2}')
+print(f'loss : {loss_}')
+##########################################################################################################
+##########################################################################################################
 
 
-    N_val = int(N * 0.5)
-    X_val =np.random.randn(N_val, D)
-    logits_val = X_val.dot(true_w) + true_b
-    probabilities_val = 1 / (1 + np.exp(-logits_val))
-    y_val = (probabilities_val > 0.5).astype(np.float32).reshape(-1, 1)
+# 3. Adam 하이퍼파라미터 설정
+lr = 0.1
+epochs = 1600
+beta1 = 0.9
+beta2 = 0.999
+epsilon = 1e-8
 
-    # 검증 데이터에 대해 순전파 수행
-    Z1_val = X_val.dot(W1) + b1      # (N_val, hidden_dim)
-    A1_val = relu(Z1_val)            # (N_val, hidden_dim)
-    Z2_val = A1_val.dot(W2) + b2     # (N_val, 1)
-    y_pred_val = sigmoid(Z2_val)     # (N_val, 1)
+# Adam 모멘텀 변수 초기화 (모든 파라미터와 동일한 shape)
+mW1 = np.zeros_like(W1)
+vb1 = np.zeros_like(b1)
+mW2 = np.zeros_like(W2)
+vb2 = np.zeros_like(b2)
+vW1 = np.zeros_like(W1)
+vb1_v = np.zeros_like(b1)  # 이름을 다르게 해서 혼동 방지: b1의 2차 모멘트
+vW2 = np.zeros_like(W2)
+vb2_v = np.zeros_like(b2)
 
-    # 검증 손실 계산 (이진 크로스 엔트로피)
-    val_loss = -np.mean(y_val * np.log(y_pred_val + 1e-8) + (1 - y_val) * np.log(1 - y_pred_val + 1e-8))
-    print("Validation Loss: {:.4f}".format(val_loss))
+loss_history = []
 
-    Z1_val = X_val.dot(_W1.T) + _b1.T
-    A1_val = relu(Z1_val)
-    Z2_val = A1_val.dot(_W2.T) + _b2
-    y_pred_val = sigmoid(Z2_val)
-    loss_ = -np.mean(y_val * np.log(y_pred_val + 1e-8) + (1 - y_val) * np.log(1 - y_pred_val + 1e-8))
-    print(f'Validatio loss in my model : {loss_}')
-    print(f'data : {N}')
+start = time.perf_counter()
+for epoch in range(1, epochs+1):
+    # 순전파: 은닉층
+    Z1 = X.dot(W1) + b1         # (N, hidden_dim)
+    A1 = relu(Z1)               # (N, hidden_dim)
+    # 순전파: 출력층
+    Z2 = A1.dot(W2) + b2        # (N, 1)
+    y_pred = sigmoid(Z2)        # (N, 1)
+    
+    # 손실 함수: 이진 크로스 엔트로피
+    loss = -np.mean(y * np.log(y_pred + 1e-8) + (1 - y) * np.log(1 - y_pred + 1e-8))
+    loss_history.append(loss)
+    
+    # 역전파: 출력층
+    dZ2 = y_pred - y            # (N, 1)
+    dW2 = A1.T.dot(dZ2) / N      # (hidden_dim, 1)
+    db2 = np.sum(dZ2, axis=0, keepdims=True) / N  # (1, 1)
+    
+    # 역전파: 은닉층
+    dA1 = dZ2.dot(W2.T)         # (N, hidden_dim)
+    dZ1 = dA1 * relu_deriv(Z1)  # (N, hidden_dim)
+    dW1 = X.T.dot(dZ1) / N       # (D, hidden_dim)
+    db1 = np.sum(dZ1, axis=0, keepdims=True) / N  # (1, hidden_dim)
+    
+    # Adam 업데이트 (시간 단계 t = epoch)
+    t = epoch
+    
+    # 1차 모멘트 업데이트
+    mW1 = beta1 * mW1 + (1 - beta1) * dW1
+    mW2 = beta1 * mW2 + (1 - beta1) * dW2
+    vb1 = beta1 * vb1 + (1 - beta1) * db1
+    vb2 = beta1 * vb2 + (1 - beta1) * db2
+    
+    # 2차 모멘트 업데이트
+    vW1 = beta2 * vW1 + (1 - beta2) * (dW1 ** 2)
+    vW2 = beta2 * vW2 + (1 - beta2) * (dW2 ** 2)
+    vb1_v = beta2 * vb1_v + (1 - beta2) * (db1 ** 2)
+    vb2_v = beta2 * vb2_v + (1 - beta2) * (db2 ** 2)
+    
+    # 편향 보정 (Bias correction)
+    mW1_corr = mW1 / (1 - beta1 ** t)
+    mW2_corr = mW2 / (1 - beta1 ** t)
+    vb1_corr = vb1 / (1 - beta1 ** t)
+    vb2_corr = vb2 / (1 - beta1 ** t)
+    
+    vW1_corr = vW1 / (1 - beta2 ** t)
+    vW2_corr = vW2 / (1 - beta2 ** t)
+    vb1_v_corr = vb1_v / (1 - beta2 ** t)
+    vb2_v_corr = vb2_v / (1 - beta2 ** t)
+    
+    # 파라미터 업데이트
+    W1 -= lr * mW1_corr / (np.sqrt(vW1_corr) + epsilon)
+    b1 -= lr * vb1_corr / (np.sqrt(vb1_v_corr) + epsilon)
+    W2 -= lr * mW2_corr / (np.sqrt(vW2_corr) + epsilon)
+    b2 -= lr * vb2_corr / (np.sqrt(vb2_v_corr) + epsilon)
+    if epoch % 200 == 0:
+        print(f"Epoch {epoch}, Loss: {loss:.4f}")
+    if epoch == epochs :
+        print(f"Epoch {epoch}, Loss: {loss:.4f}")
+end = time.perf_counter()
+print("Adam 학습 코드 실행 시간: {:.4f} 초".format(end - start))
+print("학습 완료")
+# print("학습된 W1:\n", W1)
+# print("학습된 b1:\n", b1)
+# print("학습된 W2:\n", W2)
+# print("학습된 b2:\n", b2)
+
+
+N_val = int(N * 0.5)
+X_val =np.random.randn(N_val, D)
+logits_val = X_val.dot(true_w) + true_b
+probabilities_val = 1 / (1 + np.exp(-logits_val))
+y_val = (probabilities_val > 0.5).astype(np.float32).reshape(-1, 1)
+
+# 검증 데이터에 대해 순전파 수행
+Z1_val = X_val.dot(W1) + b1      # (N_val, hidden_dim)
+A1_val = relu(Z1_val)            # (N_val, hidden_dim)
+Z2_val = A1_val.dot(W2) + b2     # (N_val, 1)
+y_pred_val = sigmoid(Z2_val)     # (N_val, 1)
+
+# 검증 손실 계산 (이진 크로스 엔트로피)
+val_loss = -np.mean(y_val * np.log(y_pred_val + 1e-8) + (1 - y_val) * np.log(1 - y_pred_val + 1e-8))
+print("Validation Loss: {:.4f}".format(val_loss))
+
+Z1_val = X_val.dot(_W1.T) + _b1.T
+A1_val = relu(Z1_val)
+Z2_val = A1_val.dot(_W2.T) + _b2
+y_pred_val = sigmoid(Z2_val)
+loss_ = -np.mean(y_val * np.log(y_pred_val + 1e-8) + (1 - y_val) * np.log(1 - y_pred_val + 1e-8))
+print(f'Validatio loss in my model : {loss_}')
+print(f'data : {N}')
