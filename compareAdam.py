@@ -5,7 +5,7 @@ import time
 
 N = 10000         # 데이터 샘플 수
 D = 10            # 입력 차원
-hidden_dim = 25
+hidden_dim = 100
 size = N
 epsilon = 1e-8
 iterator = 75

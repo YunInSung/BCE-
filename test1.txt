@@ -1,0 +1,11 @@
+Epoch 200, Loss: 0.0004
+Epoch 400, Loss: 0.0002
+Epoch 600, Loss: 0.0001
+Epoch 800, Loss: 0.0000
+Epoch 1000, Loss: 0.0000
+Epoch 1200, Loss: 0.0000
+Epoch 1400, Loss: 0.0000
+Epoch 1600, Loss: 0.0000
+Adam 학습 코드 실행 시간: 0.3070 초
+학습 완료
+Validation Loss: 0.0004
