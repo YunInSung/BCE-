@@ -3,9 +3,9 @@ import matplotlib.pyplot as plt
 import sys
 import time
 
-N = 10000         # 데이터 샘플 수
-D = 10            # 입력 차원
-hidden_dim = 100
+N = 50000         # 데이터 샘플 수
+D = 8            # 입력 차원
+hidden_dim = 24
 size = N
 epsilon = 1e-8
 iterator = 75
@@ -163,11 +163,11 @@ def ret_weight(X, Y, W1, b1, W2, b2, loss0, iter=1) :
     cpW2 = W2.copy()
     cpb2 = b2.copy()
     prevW1, prevb1, prevW2, prevb2 = cpW1, cpb1, cpW2, cpb2
-    learn = 0.05
+    learn = 0.0075
     continous = 0
     for it in range(0, iter) :
         ###############
-        if loss < 0.0006 :
+        if loss < 0.00001 :
             break
         cpW1, cpb1, cpW2, cpb2 = P_matrix(X, Y, prevW1, prevb1, prevW2, prevb2, learn)
         continous += 1
@@ -183,8 +183,8 @@ def ret_weight(X, Y, W1, b1, W2, b2, loss0, iter=1) :
             continous = 0
             print(f'it : {it} - learn : {learn}')
             continue
-        if continous >= 11 and learn < 0.01 :
-            learn *= 1.35
+        if continous >= 4 and learn < 0.75 :
+            learn *= 1.4
         prevW1, prevb1, prevW2, prevb2 = cpW1, cpb1, cpW2, cpb2
         prev_loss = loss
     return prevW1, prevb1, prevW2, prevb2
