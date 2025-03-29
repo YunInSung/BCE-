@@ -31,7 +31,7 @@ y_test_onehot = encoder.transform(y_test.values.reshape(-1, 1))
 N = X_train_scaled.shape[0]         # 데이터 샘플 수
 D = X_train_scaled.shape[1]            # 입력 차원
 hidden_dim = 14
-iterator = 100
+iterator = 75
 num_classes = y_train_onehot.shape[1]  # 클래스 수
 epsilon = 1e-16
 N_float = tf.cast(N, tf.float32)
@@ -299,11 +299,11 @@ def ret_weight_tf(X, Y, W1, b1, W2, b2, loss0, iter=1):
         Z2 = tf.matmul(h, tf.transpose(cpW2)) + tf.transpose(cpb2)
         y_pred = tf.nn.softmax(Z2)
         loss = -tf.reduce_mean(tf.reduce_sum(y_T * tf.math.log(y_pred + 1e-8), axis=1))
-        tf.print("loss_Z-", it, ":", loss)
+        # tf.print("loss_Z-", it, ":", loss)
         if loss > prev_loss:
             learn = learn * 0.5
             continuous = 0
-            tf.print("it:", it, "- learn:", learn)
+            # tf.print("it:", it, "- learn:", learn)
             continue
         if continuous >= 3 and learn < 0.35:
             learn = tf.minimum(learn * 2, 0.35)
