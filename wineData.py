@@ -1,33 +1,31 @@
-import numpy as np
+from ucimlrepo import fetch_ucirepo
 import pandas as pd
-from sklearn import datasets
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
+import numpy as np
 import tensorflow as tf
 import time
 
-# 1. 붓꽃 데이터셋 불러오기
-iris = datasets.load_iris()
-X = iris.data         # 특성: (150, 4)
-y = iris.target       # 레이블: (150,)
+# 1. Covertype 데이터셋 불러오기 (id=31)
+covertype = fetch_ucirepo(id=31)
 
-# 2. 데이터를 DataFrame으로 변환 (선택사항)
-df = pd.DataFrame(X, columns=iris.feature_names)
-df['target'] = y
+# features와 targets를 각각 X, y에 저장 (features는 DataFrame, targets는 Series 또는 DataFrame)
+X = covertype.data.features  # 예: (581012, 54)
+y = covertype.data.targets   # 예: (581012,)
 
 # 3. 학습/테스트 데이터 분할 (예: 80% 학습, 20% 테스트)
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-# 4. 특성 스케일링 (표준화)
+# 4. 특성 스케일링 (StandardScaler를 사용하여 평균 0, 분산 1로 변환)
 scaler = StandardScaler()
 X_train_scaled = scaler.fit_transform(X_train)
 X_test_scaled = scaler.transform(X_test)
 
-# 5. 레이블 One-Hot Encoding (딥러닝 모델 사용 시)
-encoder = OneHotEncoder(sparse_output=False)
-y_train_onehot = encoder.fit_transform(y_train.reshape(-1, 1))
-y_test_onehot = encoder.transform(y_test.reshape(-1, 1))
-
+# 5. 레이블 One-Hot 인코딩 (Covertype 데이터는 다중 분류 문제)
+# y_train, y_test가 pandas Series인 경우 .values를 이용해 numpy 배열로 변환
+encoder = OneHotEncoder(sparse_output=False)  # scikit-learn 1.2 이상에서는 sparse_output 사용
+y_train_onehot = encoder.fit_transform(y_train.values.reshape(-1, 1))
+y_test_onehot = encoder.transform(y_test.values.reshape(-1, 1))
 
 # 상수 및 데이터셋 설정
 N = X_train_scaled.shape[0]         # 데이터 샘플 수
@@ -438,3 +436,5 @@ Z2_val = tf.matmul(A1_val, tf.transpose(_W2_tf)) + tf.transpose(_b2_tf)
 y_pred_val = softmax(Z2_val)
 loss_val = -tf.reduce_mean(tf.reduce_sum(y_val_onehot_tf * tf.math.log(y_pred_val + 1e-8), axis=1))
 tf.print("my validation loss :", loss_val)
+
+  
