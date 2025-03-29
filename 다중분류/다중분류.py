@@ -129,10 +129,10 @@ def P_matrix(X, Y, W1, b1, W2, b2, learn):
     P = np.hstack([W1, b1])
     df1 = relu_deriv(Z1)
     d2f1 = relu_deriv2(Z1)
-    # term1 = np.dot(W2.T**2, y_pred)
-    # term2 = (np.dot(W2.T, y_pred))**2
-    # J_1 = term1 - term2
-    J_1 = np.dot(W2.T**2, d2Z2)
+    # J_1 = np.dot(W2.T**2, d2Z2)
+    term1 = np.dot(W2.T**2, y_pred)
+    term2 = (np.dot(W2.T, y_pred))**2
+    J_1 = term1 - term2
     J_2 = (W2.T).dot(dZ2)
     for row in range(0, m):
         theta = (J_1[row] * (df1[row] ** 2)) + (J_2[row] * d2f1[row])

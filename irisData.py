@@ -1,41 +1,46 @@
-import tensorflow as tf
 import numpy as np
-import matplotlib.pyplot as plt
-from sklearn.datasets import make_blobs
+import pandas as pd
+from sklearn import datasets
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
+import tensorflow as tf
 import time
 
+# 1. 붓꽃 데이터셋 불러오기
+iris = datasets.load_iris()
+X = iris.data         # 특성: (150, 4)
+y = iris.target       # 레이블: (150,)
+
+# 2. 데이터를 DataFrame으로 변환 (선택사항)
+df = pd.DataFrame(X, columns=iris.feature_names)
+df['target'] = y
+
+# 3. 학습/테스트 데이터 분할 (예: 80% 학습, 20% 테스트)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# 4. 특성 스케일링 (표준화)
+scaler = StandardScaler()
+X_train_scaled = scaler.fit_transform(X_train)
+X_test_scaled = scaler.transform(X_test)
+
+# 5. 레이블 One-Hot Encoding (딥러닝 모델 사용 시)
+encoder = OneHotEncoder(sparse_output=False)
+y_train_onehot = encoder.fit_transform(y_train.reshape(-1, 1))
+y_test_onehot = encoder.transform(y_test.reshape(-1, 1))
+
+
 # 상수 및 데이터셋 설정
-N = 100000         # 데이터 샘플 수
-D = 12            # 입력 차원
-hidden_dim = 24
+N = X_train_scaled.shape[0]         # 데이터 샘플 수
+D = X_train_scaled.shape[1]            # 입력 차원
+hidden_dim = 32
 iterator = 25
-num_classes = 6  # 클래스 수
+num_classes = y_train_onehot.shape[1]  # 클래스 수
 epsilon = 1e-16
 N_float = tf.cast(N, tf.float32)
 
-# 데이터 생성 (NumPy)
-np.random.seed()
-centers = np.array([
-    np.full(D, -5.0, dtype=np.float32),
-    np.full(D, 0.0, dtype=np.float32),
-    np.full(D, 5.0, dtype=np.float32)
-])
-X_np, y_np = make_blobs(n_samples=N, n_features=D, centers=centers, 
-                          cluster_std=1.5, random_state=42)
-X_np = X_np.astype(np.float32)
-y_np = y_np.reshape(-1, 1)
-
-def one_hot(y, num_classes):
-    onehot = np.zeros((y.shape[0], num_classes), dtype=np.float32)
-    onehot[np.arange(y.shape[0]), y.flatten()] = 1
-    return onehot
-
-y_onehot_np = one_hot(y_np, num_classes)
-
 # NumPy 데이터 -> TensorFlow 텐서 (dtype=tf.float32)
-X_tf = tf.convert_to_tensor(X_np, dtype=tf.float32)           # (N, D)
-y_tf = tf.convert_to_tensor(y_np, dtype=tf.float32)            # (N, 1)
-y_onehot_tf = tf.convert_to_tensor(y_onehot_np, dtype=tf.float32)  # (N, num_classes)
+X_tf = tf.convert_to_tensor(X_train_scaled, dtype=tf.float32)           # (N, D)
+y_onehot_tf = tf.convert_to_tensor(y_train_onehot, dtype=tf.float32)  # (N, num_classes)
 
 # 활성화 및 미분 함수 정의
 def softmax(x):
@@ -282,10 +287,10 @@ def ret_weight_tf(X, Y, W1, b1, W2, b2, loss0, iter=1):
     cpW2 = tf.identity(W2)
     cpb2 = tf.identity(b2)
     prevW1, prevb1, prevW2, prevb2 = cpW1, cpb1, cpW2, cpb2
-    learn = 0.0025
+    learn = 0.01
     continuous = 0
     for it in tf.range(iter):
-        if loss < 1e-4:
+        if loss < 1e-2:
             break
         cpW1, cpb1, cpW2, cpb2 = P_matrix_tf(X, Y, prevW1, prevb1, prevW2, prevb2, learn)
         continuous += 1
@@ -351,7 +356,7 @@ tf.print("최종 loss :", loss_val)
 #                Adam 학습                #
 ##############################################
 lr = 0.1
-epochs = 800
+epochs = 100
 beta1 = 0.9
 beta2 = 0.999
 adam_epsilon = 1e-8
@@ -417,13 +422,8 @@ end = time.perf_counter()
 print("Adam 학습 코드 실행 시간: {:.4f} 초".format(end - start))
 print("학습 완료")
 
-N_val = int(N * 0.5)
-X_val_np, y_val_np = make_blobs(n_samples=N_val, n_features=D, centers=centers, cluster_std=1.5, random_state=42)
-X_val_np = X_val_np.astype(np.float32)
-y_val_np = y_val_np.reshape(-1, 1)
-y_val_onehot_np = one_hot(y_val_np, num_classes)
-X_val_tf = tf.convert_to_tensor(X_val_np, dtype=tf.float32)
-y_val_onehot_tf = tf.convert_to_tensor(y_val_onehot_np, dtype=tf.float32)
+X_val_tf = tf.convert_to_tensor(X_test_scaled, dtype=tf.float32)
+y_val_onehot_tf = tf.convert_to_tensor(y_test_onehot, dtype=tf.float32)
 
 Z1_val = tf.matmul(X_val_tf, W1_tf_var) + b1_tf_var
 A1_val = relu(Z1_val)
