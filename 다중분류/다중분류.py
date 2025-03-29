@@ -3,13 +3,13 @@ import matplotlib.pyplot as plt
 from sklearn.datasets import make_blobs
 import time
 
-N = 100000         # 데이터 샘플 수
-D = 8             # 입력 차원
-hidden_dim = 16
+N = 10000         # 데이터 샘플 수
+D = 12             # 입력 차원
+hidden_dim = 24
 size = N
 epsilon = 1e-8
 iterator = 50
-num_classes = 4   # 클래스 수
+num_classes = 6   # 클래스 수
 ######################################################################################################
 ######################################################################################################
 ######################################################################################################
@@ -171,7 +171,7 @@ def ret_weight(X, Y, W1, b1, W2, b2, loss0, iter=1) :
     cpW2 = W2.copy()
     cpb2 = b2.copy()
     prevW1, prevb1, prevW2, prevb2 = cpW1, cpb1, cpW2, cpb2
-    learn = 0.05
+    learn = 0.01
     continous = 0
     for it in range(0, iter) :
         ###############
@@ -191,8 +191,8 @@ def ret_weight(X, Y, W1, b1, W2, b2, loss0, iter=1) :
             continous = 0
             print(f'it : {it} - learn : {learn}')
             continue
-        if continous >= 3 and learn < 0.75 :
-            learn *= 1.4
+        if continous >= 2 and learn < 0.75 :
+            learn *= 1.35
         prevW1, prevb1, prevW2, prevb2 = cpW1, cpb1, cpW2, cpb2
         prev_loss = loss
     return prevW1, prevb1, prevW2, prevb2
