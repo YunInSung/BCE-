@@ -6,15 +6,21 @@ import numpy as np
 import tensorflow as tf
 import time
   
-# fetch dataset 
-statlog_shuttle = fetch_ucirepo(id=148) 
-  
-# data (as pandas dataframes) 
-X = statlog_shuttle.data.features 
-y = statlog_shuttle.data.targets
+connect_4 = fetch_ucirepo(id=26)
+
+X = connect_4.data.features  # 예: (67557, 42)
+y = connect_4.data.targets   # 예: (67557,)
+
+# 1. 특성 전처리: 범주형 특성을 원-핫 인코딩하여 수치형 데이터로 변환
+# X의 모든 열이 범주형 변수라면 get_dummies를 사용합니다.
+X = pd.get_dummies(X)
+
+# 2. 타깃 데이터가 문자열인 경우, 문자열 그대로 사용하거나 별도 인코딩 필요
+# 여기서는 타깃은 그대로 사용합니다.
+y = y.astype(str)
 
 # 3. 학습/테스트 데이터 분할 (예: 80% 학습, 20% 테스트)
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.95, random_state=42)
 
 # 4. 특성 스케일링 (StandardScaler를 사용하여 평균 0, 분산 1로 변환)
 scaler = StandardScaler()
@@ -30,7 +36,7 @@ y_test_onehot = encoder.transform(y_test.values.reshape(-1, 1))
 # 상수 및 데이터셋 설정
 N = X_train_scaled.shape[0]         # 데이터 샘플 수
 D = X_train_scaled.shape[1]            # 입력 차원
-hidden_dim = 14
+hidden_dim = 252
 iterator = 100
 num_classes = y_train_onehot.shape[1]  # 클래스 수
 epsilon = 1e-16
@@ -217,7 +223,7 @@ def P_matrix_tf(X, Y, W1, b1, W2, b2, learn):
     n = tf.shape(X)[0]      # 입력 차원 D
 
     Z1 = tf.matmul(W1, X) + b1         # (m,N)
-    A1 = tf.nn.leaky_relu(Z1, alpha=0.001)
+    A1 = tf.nn.relu(Z1)  # relu(Z1)
     Z2 = tf.matmul(W2, A1) + b2         # (p,N)
     y_pred = tf.transpose(tf.nn.softmax(tf.transpose(Z2)))
     dZ2 = y_pred - Y
@@ -285,9 +291,8 @@ def ret_weight_tf(X, Y, W1, b1, W2, b2, loss0, iter=1):
     cpW2 = tf.identity(W2)
     cpb2 = tf.identity(b2)
     prevW1, prevb1, prevW2, prevb2 = cpW1, cpb1, cpW2, cpb2
-    learn = 0.0025
+    learn = 0.00125
     continuous = 0
-
     for it in tf.range(iter):
         if loss < 1e-2:
             break
@@ -295,7 +300,7 @@ def ret_weight_tf(X, Y, W1, b1, W2, b2, loss0, iter=1):
         continuous += 1
         y_T = tf.transpose(Y)
         Z1 = tf.matmul(tf.transpose(X), tf.transpose(cpW1)) + tf.transpose(cpb1)
-        h = tf.nn.leaky_relu(Z1, alpha=0.001)
+        h = tf.nn.relu(Z1)
         Z2 = tf.matmul(h, tf.transpose(cpW2)) + tf.transpose(cpb2)
         y_pred = tf.nn.softmax(Z2)
         loss = -tf.reduce_mean(tf.reduce_sum(y_T * tf.math.log(y_pred + 1e-8), axis=1))
@@ -305,8 +310,8 @@ def ret_weight_tf(X, Y, W1, b1, W2, b2, loss0, iter=1):
             continuous = 0
             tf.print("it:", it, "- learn:", learn)
             continue
-        if continuous >= 3 and learn < 0.35:
-            learn = tf.minimum(learn * 2.5, 0.35)
+        if continuous >= 2 and learn < 0.5:
+            learn = tf.minimum(learn * 2, 0.5)
         prevW1, prevb1, prevW2, prevb2 = cpW1, cpb1, cpW2, cpb2
         prev_loss = loss
     return prevW1, prevb1, prevW2, prevb2
@@ -326,9 +331,9 @@ b2_tf_var = tf.Variable(b2_init, dtype=tf.float32)
 
 # 초기 순전파 및 손실 계산 (NumPy와 동일한 방식)
 Z1 = tf.matmul(X_tf, W1_tf_var) + b1_tf_var
-A1 = tf.nn.leaky_relu(Z1, alpha=0.001)
+A1 = relu(Z1)
 Z2 = tf.matmul(A1, W2_tf_var) + b2_tf_var
-y_pred = tf.nn.softmax(Z2)
+y_pred = softmax(Z2)
 loss0_tf = -tf.reduce_mean(tf.reduce_sum(y_onehot_tf * tf.math.log(y_pred + 1e-8), axis=1))
 tf.print("loss0 =", loss0_tf)
 
@@ -345,11 +350,11 @@ end = time.perf_counter()
 print("ret_weight 코드 실행 시간: {:.4f} 초".format(end - start))
 
 Z1_val = tf.matmul(X_tf, tf.transpose(_W1_tf)) + tf.transpose(_b1_tf)
-A1_val = tf.nn.leaky_relu(Z1_val, alpha=0.001)
+A1_val = relu(Z1_val)
 Z2_val = tf.matmul(A1_val, tf.transpose(_W2_tf)) + tf.transpose(_b2_tf)
-y_pred_val = tf.nn.softmax(Z2_val)
+y_pred_val = softmax(Z2_val)
 loss_val = -tf.reduce_mean(tf.reduce_sum(y_onehot_tf * tf.math.log(y_pred_val + 1e-8), axis=1))
-tf.print("my loss :", loss_val)
+tf.print("최종 loss :", loss_val)
 
 ##############################################
 #                Adam 학습                #
@@ -373,9 +378,9 @@ loss_history = []
 start = time.perf_counter()
 for epoch in range(1, epochs+1):
     Z1 = tf.matmul(X_tf, W1_tf_var) + b1_tf_var
-    A1 = tf.nn.leaky_relu(Z1, alpha=0.001)
+    A1 = relu(Z1)
     Z2 = tf.matmul(A1, W2_tf_var) + b2_tf_var
-    y_pred = tf.nn.softmax(Z2)
+    y_pred = softmax(Z2)
     loss = -tf.reduce_mean(tf.reduce_sum(y_onehot_tf * tf.math.log(y_pred + 1e-8), axis=1))
     loss_history.append(loss.numpy())
     
@@ -425,16 +430,16 @@ X_val_tf = tf.convert_to_tensor(X_test_scaled, dtype=tf.float32)
 y_val_onehot_tf = tf.convert_to_tensor(y_test_onehot, dtype=tf.float32)
 
 Z1_val = tf.matmul(X_val_tf, W1_tf_var) + b1_tf_var
-A1_val = tf.nn.leaky_relu(Z1_val, alpha=0.001)
+A1_val = relu(Z1_val)
 Z2_val = tf.matmul(A1_val, W2_tf_var) + b2_tf_var
-y_pred_val = tf.nn.softmax(Z2_val)
+y_pred_val = softmax(Z2_val)
 val_loss = -tf.reduce_mean(tf.reduce_sum(y_val_onehot_tf * tf.math.log(y_pred_val + 1e-8), axis=1))
 tf.print("Validation Loss:", val_loss)
 
 Z1_val = tf.matmul(X_val_tf, tf.transpose(_W1_tf)) + tf.transpose(_b1_tf)
-A1_val = tf.nn.leaky_relu(Z1_val, alpha=0.001)
+A1_val = relu(Z1_val)
 Z2_val = tf.matmul(A1_val, tf.transpose(_W2_tf)) + tf.transpose(_b2_tf)
-y_pred_val = tf.nn.softmax(Z2_val)
+y_pred_val = softmax(Z2_val)
 loss_val = -tf.reduce_mean(tf.reduce_sum(y_val_onehot_tf * tf.math.log(y_pred_val + 1e-8), axis=1))
 tf.print("my validation loss :", loss_val)
 
