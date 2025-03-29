@@ -285,7 +285,7 @@ def ret_weight_tf(X, Y, W1, b1, W2, b2, loss0, iter=1):
     cpW2 = tf.identity(W2)
     cpb2 = tf.identity(b2)
     prevW1, prevb1, prevW2, prevb2 = cpW1, cpb1, cpW2, cpb2
-    learn = 0.0025
+    learn = 0.005
     continuous = 0
 
     for it in tf.range(iter):
@@ -306,7 +306,7 @@ def ret_weight_tf(X, Y, W1, b1, W2, b2, loss0, iter=1):
             tf.print("it:", it, "- learn:", learn)
             continue
         if continuous >= 3 and learn < 0.35:
-            learn = tf.minimum(learn * 2.5, 0.35)
+            learn = tf.minimum(learn * 2, 0.35)
         prevW1, prevb1, prevW2, prevb2 = cpW1, cpb1, cpW2, cpb2
         prev_loss = loss
     return prevW1, prevb1, prevW2, prevb2
