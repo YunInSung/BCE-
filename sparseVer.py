@@ -30,7 +30,7 @@ y_test_onehot = encoder.transform(y_test.values.reshape(-1, 1))
 # 상수 및 데이터셋 설정
 N = X_train_scaled.shape[0]         # 데이터 샘플 수
 D = X_train_scaled.shape[1]            # 입력 차원
-hidden_dim = 98
+hidden_dim = 14
 iterator = 75
 num_classes = y_train_onehot.shape[1]  # 클래스 수
 epsilon = 1e-16
@@ -285,11 +285,11 @@ def ret_weight_tf(X, Y, W1, b1, W2, b2, loss0, iter=1):
     cpW2 = tf.identity(W2)
     cpb2 = tf.identity(b2)
     prevW1, prevb1, prevW2, prevb2 = cpW1, cpb1, cpW2, cpb2
-    learn = 0.0025
+    learn = 0.005
     continuous = 0
 
     for it in tf.range(iter):
-        if loss < 1e-2:
+        if loss < 1e-2 * 1.25:
             break
         cpW1, cpb1, cpW2, cpb2 = P_matrix_tf(X, Y, prevW1, prevb1, prevW2, prevb2, learn)
         continuous += 1
@@ -301,12 +301,15 @@ def ret_weight_tf(X, Y, W1, b1, W2, b2, loss0, iter=1):
         loss = -tf.reduce_mean(tf.reduce_sum(y_T * tf.math.log(y_pred + 1e-8), axis=1))
         tf.print("loss_Z-", it, ":", loss)
         if loss > prev_loss:
-            learn = learn * 0.5
+            learn = learn * 0.6
             continuous = 0
             tf.print("it:", it, "- learn:", learn)
             continue
-        if continuous >= 3 and learn < 0.1:
-            learn = tf.minimum(learn * 2, 0.1)
+        if continuous >= 2 and learn < 0.1:
+            if (learn < 1e-2) :
+                learn = learn * 2.5
+            else :
+                learn = tf.minimum(learn * 1.65, 0.1)
         prevW1, prevb1, prevW2, prevb2 = cpW1, cpb1, cpW2, cpb2
         prev_loss = loss
     return prevW1, prevb1, prevW2, prevb2
@@ -355,7 +358,7 @@ tf.print("my loss :", loss_val)
 #                Adam 학습                #
 ##############################################
 lr = 0.05
-epochs = 600
+epochs = 800
 beta1 = 0.9
 beta2 = 0.999
 adam_epsilon = 1e-8
