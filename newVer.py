@@ -55,17 +55,6 @@ def H_matirx2_r(h, row, d2Z2, A1i, grad_W2_r):
     matrix = np.hstack([grad_W2_r, np.sum(d2Z2[row] * A1i, axis = 1).reshape(m+1,1) / N])
     return matrix
 
-def L_matrix2_r(h, P, row, dW2, db2, d2Z2, A1i, grad_W2_r, learn):
-    m = h.shape[0]
-    v0 = P[row]
-    W2_r =  dW2[row] * learn
-    matrix = (v0@grad_W2_r) - W2_r
-    grad_b_r = np.sum(d2Z2[row] * A1i, axis = 1).reshape(m+1,1) / N
-    b_r = db2[row] * learn
-    tmp = v0.reshape(1, m + 1).dot(grad_b_r) - b_r
-    matrix = np.append(matrix, tmp).reshape(1, m + 1)
-    return matrix
-
 #####################################
 #############  W1 b1  ###############
 #####################################
@@ -80,17 +69,6 @@ def grad_W1_func_r(theta, X, Xi):
 def H_matirx1_r(theta, X, Xi, grad_W1_r):
     n = X.shape[0]
     matrix = np.hstack([grad_W1_r, np.sum(theta * Xi, axis = 1).reshape(n + 1, 1) / N])
-    return matrix
-
-def L_matrix1_r(X, P, theta, dW1, db1, row, Xi, grad_W1_r, learn):
-    n = X.shape[0]
-    v0 = P[row]
-    W1_r =  dW1[row] * learn
-    matrix = (v0.dot(grad_W1_r)) - W1_r
-    grad_b_r = np.sum(theta * Xi, axis = 1).reshape(n + 1, 1) / N
-    b_r = db1[row] * learn
-    tmp = v0.reshape(1, n + 1).dot(grad_b_r) - b_r
-    matrix = np.append(matrix, tmp).reshape(1, n + 1)
     return matrix
 
 def P_matrix(X, Y, W1, b1, W2, b2, learn):
@@ -121,17 +99,18 @@ def P_matrix(X, Y, W1, b1, W2, b2, learn):
 
     i = np.ones((1, X.shape[1]))
     Xi = np.vstack((X, i))
-    P = np.hstack([W1, b1])
     df1 = relu_deriv(Z1)
     d2f1 = relu_deriv2(Z1)
     J_1 = ((W2 * W2).T).dot(d2Z2)
     J_2 = (W2.T).dot(dZ2)
+    P = np.hstack([W1, b1])
+    GP = np.hstack([dW1, db1])
     for row in range(0, m):
         theta = (J_1[row] * (df1[row] ** 2)) + (J_2[row] * d2f1[row])
         grad_W1_r = grad_W1_func_r(theta, X, Xi)
         H_r = H_matirx1_r(theta, X, Xi, grad_W1_r)
-        L_r = L_matrix1_r(X, P, theta, dW1, db1, row, Xi, grad_W1_r, learn)
-        P_r = L_r.dot(np.linalg.pinv(H_r))
+        L_r = GP[row].dot(np.linalg.pinv(H_r)).reshape(1, n + 1)
+        P_r = P[row] - L_r*learn
         if row == 0 :
             matrix1 = np.vstack([P_r])
         else :
@@ -142,11 +121,12 @@ def P_matrix(X, Y, W1, b1, W2, b2, learn):
     i = np.ones((1, A1.shape[1]))
     A1i = np.vstack((A1, i))
     P = np.hstack([W2, b2])
+    GP = np.hstack([dW2, db2])
     for row in range(0,p):
         grad_W2_r = grad_W2_func_r(A1, row, d2Z2, A1i)
         H_r = H_matirx2_r(A1, row, d2Z2, A1i, grad_W2_r)
-        L_r = L_matrix2_r(A1, P, row, dW2, db2, d2Z2, A1i, grad_W2_r, learn)
-        P_r = L_r.dot(np.linalg.pinv(H_r))
+        L_r = GP[row].dot(np.linalg.pinv(H_r)).reshape(1, m + 1)
+        P_r = P[row] - L_r*learn
         if row == 0 :
             matrix2 = np.vstack([P_r])
         else :

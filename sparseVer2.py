@@ -10,6 +10,7 @@ import time
 beta1 = 0.9
 beta2 = 0.999
 adam_epsilon = 1e-8
+
 ###############################################################################################################
 ###############################################################################################################
 ###############################################################################################################
@@ -36,6 +37,9 @@ encoder = OneHotEncoder(sparse_output=False)  # scikit-learn 1.2 이상에서는
 y_train_onehot = encoder.fit_transform(y_train.values.reshape(-1, 1))
 y_test_onehot = encoder.transform(y_test.values.reshape(-1, 1))
 
+###############################################################################################################
+###############################################################################################################
+###############################################################################################################
 # 상수 및 데이터셋 설정
 N = X_train_scaled.shape[0]         # 데이터 샘플 수
 D = X_train_scaled.shape[1]            # 입력 차원
@@ -44,6 +48,14 @@ iterator = 75
 num_classes = y_train_onehot.shape[1]  # 클래스 수
 epsilon = 1e-16
 N_float = tf.cast(N, tf.float32)
+
+# mL = tf.Variable(tf.zeros(shape=(hidden_dim, D + 1)), trainable=False)
+# vL = tf.Variable(tf.zeros(shape=(hidden_dim, D + 1)), trainable=False)
+# mL2 = tf.Variable(tf.zeros(shape=(num_classes, hidden_dim + 1)), trainable=False)
+# vL2 = tf.Variable(tf.zeros(shape=(num_classes, hidden_dim + 1)), trainable=False)
+###############################################################################################################
+###############################################################################################################
+###############################################################################################################
 
 # NumPy 데이터 -> TensorFlow 텐서 (dtype=tf.float32)
 X_tf = tf.convert_to_tensor(X_train_scaled, dtype=tf.float32)           # (N, D)
@@ -121,37 +133,6 @@ def H_matirx2_r_tf_batch(h, row, d2Z2, A1i, grad_W2_r):
     matrix = tf.concat([grad_W2_r, sum_tensor], axis=2)  # (B,81,80+1) -> (B,81,81)
     return matrix
 
-@tf.function
-def L_matrix2_r_tf_batch(h, P, row, dW2, db2, d2Z2, A1i, grad_W2_r, learn):
-    """
-    벡터화된 연산을 사용하여, 각 배치에 대해 L 행렬을 계산.
-    P: (p,81), dW2: (p,80), db2: (p,1)
-    
-    출력: (B,1,81)
-    """
-    B = tf.shape(row)[0]
-    out_dim = tf.shape(A1i)[0]  # 81
-    v0 = tf.gather(P, row)         # (B,81)
-    W2_r = tf.gather(dW2, row) * learn   # (B,80)
-    v0_exp = tf.expand_dims(v0, axis=1)   # (B,1,81)
-    # grad_W2_r: (B,81,80)
-    mat = tf.matmul(v0_exp, grad_W2_r)  # (B,1,80)
-    mat_flat = tf.reshape(mat, [B, -1])  # (B,80)
-    matrix_part = mat_flat - W2_r        # (B,80)
-    
-    d2Z2_batch = tf.gather(d2Z2, row)   # (B,5000)
-    A1i_exp = tf.expand_dims(A1i, axis=0)  # (1,81,5000)
-    d2Z2_exp = tf.expand_dims(d2Z2_batch, axis=1)  # (B,1,5000)
-    prod = d2Z2_exp * A1i_exp           # (B,81,5000)
-    summed = tf.reduce_sum(prod, axis=2)  # (B,81)
-    grad_b_r = tf.reshape(summed / N_float, [B, out_dim, 1])  # (B,81,1)
-    
-    b_r = tf.gather(db2, row) * learn    # (B,1)
-    tmp = tf.matmul(v0_exp, grad_b_r)    # (B,1,1)
-    tmp = tf.reshape(tmp, [B, 1]) - b_r   # (B,1)
-    combined = tf.concat([matrix_part, tmp], axis=1)  # (B,80+1) = (B,81)
-    combined = tf.expand_dims(combined, axis=1)       # (B,1,81)
-    return combined
 
 @tf.function
 def grad_W1_func_r_tf(theta, X, Xi):
@@ -188,35 +169,7 @@ def H_matirx1_r_tf(theta, X, Xi, grad_W1_r):
     return matrix
 
 @tf.function
-def L_matrix1_r_tf(X, P, theta, dW1, db1, row, Xi, grad_W1_r, learn):
-    """
-    X: (D,M), P: (m,D+1), theta: (B,M), dW1: (m,D), db1: (m,1), row: (B,),
-    Xi: (D+1,M), grad_W1_r: (B,D+1,D)
-    
-    출력: (B, 1, D+1)
-    """
-    B = tf.shape(row)[0]
-    n = tf.shape(X)[0]
-    v0 = tf.gather(P, row)       # (B,D+1)
-    W1_r = tf.gather(dW1, row) * learn  # (B,D)
-    v0_exp = tf.expand_dims(v0, axis=1)  # (B,1,D+1)
-    mat = tf.matmul(v0_exp, grad_W1_r)    # (B,1,D)
-    mat_flat = tf.reshape(mat, [B, -1])    # (B,D)
-    matrix_part = mat_flat - W1_r          # (B,D)
-    theta_exp = tf.expand_dims(theta, 1)   # (B,1,M)
-    Xi_exp = tf.expand_dims(Xi, 0)           # (1,D+1,M)
-    prod = theta_exp * Xi_exp              # (B,D+1,M)
-    grad_b_r = tf.reduce_sum(prod, axis=-1) / N_float  # (B,D+1)
-    grad_b_r = tf.expand_dims(grad_b_r, axis=2)         # (B,D+1,1)
-    b_r = tf.gather(db1, row) * learn      # (B,1)
-    tmp = tf.matmul(v0_exp, grad_b_r)      # (B,1,1)
-    tmp = tf.reshape(tmp, [B, 1]) - b_r     # (B,1)
-    combined = tf.concat([matrix_part, tmp], axis=1)  # (B,D+1)
-    combined = tf.expand_dims(combined, axis=1)       # (B,1,D+1)
-    return combined
-
-@tf.function
-def P_matrix_tf(X, Y, W1, b1, W2, b2, learn):
+def P_matrix_tf(X, Y, W1, b1, W2, b2, learn, it):
     """
     X: (D,N), Y: (p,N), W1: (m,D), b1: (m,1), W2: (p,m), b2: (p,1)
     출력: cpW1: (m,D), cpb1: (m,1), cpW2: (p,m), cpb2: (p,1)
@@ -239,14 +192,16 @@ def P_matrix_tf(X, Y, W1, b1, W2, b2, learn):
     dW1 = tf.matmul(dZ1, tf.transpose(X)) / tf.cast(N, tf.float32)
     db1 = tf.reduce_sum(dZ1, axis=1, keepdims=True) / tf.cast(N, tf.float32)
 
+    #######################################################################################
+    #################################      W1 b1      #####################################
+    #######################################################################################
     i = tf.ones((1, tf.shape(X)[1]), dtype=tf.float32)
     Xi = tf.concat([X, i], axis=0)   # (D+1,N)
     P1 = tf.concat([W1, b1], axis=1)  # (m,D+1)
+    GP1 = tf.concat([dW1, db1], axis=1)
     df1 = tf.where(Z1>=0, tf.ones_like(Z1), 0.001*tf.ones_like(Z1))
     d2f1 = tf.zeros_like(Z1)
 
-    # hidden row 처리
-    # 배치 처리는 모든 hidden 노드를 한 번에 처리 (행 인덱스 0~m-1)
     hidden_rows = tf.range(m)
     term1 = tf.matmul(tf.transpose(W2)**2, y_pred) 
     term2 = tf.square(tf.matmul(tf.transpose(W2), y_pred))
@@ -255,28 +210,41 @@ def P_matrix_tf(X, Y, W1, b1, W2, b2, learn):
              tf.gather(tf.matmul(tf.transpose(W2), dZ2), hidden_rows) * d2f1)
     grad_W1_r = grad_W1_func_r_tf(theta, X, Xi)        # (m, D+1, D)
     H_r       = H_matirx1_r_tf(theta, X, Xi, grad_W1_r)  # (m, D+1, D+1)
-    L_r       = L_matrix1_r_tf(X, P1, theta, dW1, db1, hidden_rows, Xi, grad_W1_r, learn)  # (m, 1, D+1)
-    H_r_reg = H_r + epsilon * tf.eye(tf.shape(H_r)[1], dtype=tf.float32)
-    sol = tf.linalg.solve(tf.transpose(H_r_reg, perm=[0,2,1]), tf.transpose(L_r, perm=[0,2,1]))
-    P1_sol = tf.transpose(sol, perm=[0,2,1])  # (m, 1, D+1)
-    matrix1 = tf.squeeze(P1_sol, axis=1)       # (m, D+1)
+    H_r_reg   = H_r + epsilon * tf.eye(tf.shape(H_r)[1], dtype=tf.float32)
+    sol       = tf.linalg.solve(tf.transpose(H_r_reg, perm=[0,2,1]), tf.expand_dims(GP1, axis=2))
+    L_r       = tf.squeeze(tf.transpose(sol, perm=[0, 2, 1]), axis=1)
+
+    # mL.assign(beta1 * mL + (1 - beta1) * L_r)
+    # vL.assign(beta2 * vL + (1 - beta2) * tf.square(L_r))
+    # mL_corr = mL / (1 - beta1**it)
+    # vL_corr = vL / (1 - beta2**it)
+    # matrix1 = P1 - learn * mL_corr / (tf.sqrt(vL_corr) + adam_epsilon)
+
+    matrix1 = P1 - learn * L_r
     cpW1 = matrix1[:, :n]         
     cpb1 = tf.reshape(matrix1[:, n], [m, 1])
-
+    #######################################################################################
+    #################################      W2 b2      #####################################
+    #######################################################################################
     i_A1 = tf.ones((1, tf.shape(A1)[1]), dtype=tf.float32)
     A1i = tf.concat([A1, i_A1], axis=0)  # (m+1,N)
     P2 = tf.concat([W2, b2], axis=1)      # (p, m+1)
+    GP2 = tf.concat([dW2, db2], axis=1)
 
     output_rows = tf.range(p)
-    # 벡터화된 출력층 업데이트 계산:
-    # grad_W2_r: (p, m+1, m)
     grad_W2_r = grad_W2_func_r_tf_batch(A1, output_rows, d2Z2, A1i)
     H_r2 = H_matirx2_r_tf_batch(A1, output_rows, d2Z2, A1i, grad_W2_r)
-    L_r2 = L_matrix2_r_tf_batch(A1, P2, output_rows, dW2, db2, d2Z2, A1i, grad_W2_r, learn)
     H_r2_reg = H_r2 + epsilon * tf.eye(tf.shape(H_r2)[1], dtype=tf.float32)
-    sol2 = tf.linalg.solve(tf.transpose(H_r2_reg, perm=[0,2,1]), tf.transpose(L_r2, perm=[0,2,1]))
-    P2_sol = tf.transpose(sol2, perm=[0,2,1])
-    matrix2 = tf.squeeze(P2_sol, axis=1)  # (p, m+1)
+    sol2 = tf.linalg.solve(tf.transpose(H_r2_reg, perm=[0,2,1]), tf.expand_dims(GP2, axis=2))
+    L_r2 = tf.squeeze(tf.transpose(sol2, perm=[0, 2, 1]), axis=1)
+
+    # mL2.assign(beta1 * mL2 + (1 - beta1) * L_r2)
+    # vL2.assign(beta2 * vL2 + (1 - beta2) * tf.square(L_r2))
+    # mL2_corr = mL2 / (1 - beta1**it)
+    # vL2_corr = vL2 / (1 - beta2**it)
+    # matrix2 = P2 - learn * mL2_corr / (tf.sqrt(vL2_corr) + adam_epsilon)
+
+    matrix2 = P2 - learn * L_r2
     cpW2 = matrix2[:, :m]
     cpb2 = tf.reshape(matrix2[:, m], [p, 1])
     return cpW1, cpb1, cpW2, cpb2
@@ -290,14 +258,15 @@ def ret_weight_tf(X, Y, W1, b1, W2, b2, loss0, iter=1):
     cpW2 = tf.identity(W2)
     cpb2 = tf.identity(b2)
     prevW1, prevb1, prevW2, prevb2 = cpW1, cpb1, cpW2, cpb2
-    learn = 0.1
+    # prevmL, prevvL, prevmL2, prevvL2 = tf.identity(mL), tf.identity(vL), tf.identity(mL2), tf.identity(vL2)
+    learn = 0.05
     continuous = 0
     y_T = tf.transpose(Y)
 
     for it in tf.range(iter):
         if loss < 1e-2 * 1.5:
             break
-        cpW1, cpb1, cpW2, cpb2 = P_matrix_tf(X, Y, prevW1, prevb1, prevW2, prevb2, learn)
+        cpW1, cpb1, cpW2, cpb2 = P_matrix_tf(X, Y, prevW1, prevb1, prevW2, prevb2, learn, tf.cast(it+1, tf.float32))
         continuous += 1
         Z1 = tf.matmul(cpW1, X) + cpb1
         h = tf.nn.leaky_relu(Z1, alpha=0.001)
@@ -306,13 +275,20 @@ def ret_weight_tf(X, Y, W1, b1, W2, b2, loss0, iter=1):
         loss = -tf.reduce_mean(tf.reduce_sum(y_T * tf.math.log(y_pred + 1e-8), axis=1))
         tf.print("loss_Z-", it, ":", loss)
         if loss - prev_loss > 0:
+            if (learn < 1e-6) :
+                break
             learn = learn * 0.25
             continuous = 0
+            # mL.assign(prevmL)
+            # vL.assign(prevvL)
+            # mL2.assign(prevmL2)
+            # vL2.assign(prevvL2)
             tf.print("it:", it, "- learn:", learn)
             continue
         if continuous >= 2 and learn < 0.1:
-            learn = tf.minimum(learn * 1.35, 0.1)
+            learn = tf.minimum(learn * 1.5, 0.1)
         prevW1, prevb1, prevW2, prevb2 = cpW1, cpb1, cpW2, cpb2
+        # prevmL, prevvL, prevmL2, prevvL2 = tf.identity(mL), tf.identity(vL), tf.identity(mL2), tf.identity(vL2)
         prev_loss = loss
     return prevW1, prevb1, prevW2, prevb2
 
