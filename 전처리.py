@@ -364,7 +364,7 @@ tf.print("my loss :", loss_val)
 ##############################################
 #                Adam 학습                #
 ##############################################
-lr = 0.25
+lr = 0.15
 epochs = 800
 
 mW1 = tf.Variable(tf.zeros_like(W1_tf_var), trainable=False)
