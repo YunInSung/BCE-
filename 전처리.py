@@ -4,6 +4,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, RobustScaler, OneHotEncoder
 from sklearn.impute import SimpleImputer
 from sklearn.decomposition import PCA
+import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
 import time
@@ -20,7 +21,7 @@ adam_epsilon = 1e-8
 # fetch dataset 
 statlog_shuttle = fetch_ucirepo(id=148) 
   
-# data (as pandas dataframes) 
+# data (as pandas dataframes)
 X = statlog_shuttle.data.features 
 y = statlog_shuttle.data.targets
 
@@ -28,12 +29,19 @@ y = statlog_shuttle.data.targets
 X = X.reset_index(drop=True)
 y = y.reset_index(drop=True)
 
-# 1. 결측치 처리: SimpleImputer를 이용해 결측치를 평균값으로 대체
+# 1. 결측치 처리: SimpleImputer를 이용해 결측치를 중간값(median)으로 대체
 imputer = SimpleImputer(strategy='median')
 X_imputed = pd.DataFrame(imputer.fit_transform(X), columns=X.columns)
 
+# for col in X_imputed.columns:
+#     plt.figure()
+#     plt.boxplot(X_imputed[col])
+#     plt.title(f"{col} - Boxplot")
+#     plt.ylabel(col)
+#     plt.show()
+
 # 2. 이상치 탐지 및 제거: IQR 방법 (각 특성별 IQR을 계산하여 이상치 제거)
-def remove_outliers_iqr(df, factor=1.5):
+def remove_outliers_iqr(df, factor=3):
     Q1 = df.quantile(0.25)
     Q3 = df.quantile(0.75)
     IQR = Q3 - Q1
@@ -41,6 +49,7 @@ def remove_outliers_iqr(df, factor=1.5):
     return df[mask]
 
 X_no_outliers = remove_outliers_iqr(X_imputed)
+print("이상치 제거 후 shape:", X_no_outliers.shape)
 
 # X_no_outliers는 X의 일부 행을 유지하므로, 그에 해당하는 y의 행만 선택
 y = y.loc[X_no_outliers.index]
@@ -50,15 +59,12 @@ X_no_outliers = X_no_outliers.reset_index(drop=True)
 y = y.reset_index(drop=True)
 
 # 3. 학습/테스트 데이터 분할 (예: 80% 학습, 20% 테스트)
-# X_train, X_test, y_train, y_test = train_test_split(
-#     X_no_outliers, y, test_size=0.2, random_state=42, stratify=y
-# )
 X_train, X_test, y_train, y_test = train_test_split(
     X_no_outliers, y, test_size=0.2, stratify=y
 )
 
-# 4. 특성 스케일링: StandardScaler 사용 예시
-scaler = StandardScaler()
+# 4. 특성 스케일링: RobustScaler 사용 예시 (이상치에 민감하지 않음)
+scaler = RobustScaler()
 X_train_scaled = scaler.fit_transform(X_train)
 X_test_scaled = scaler.transform(X_test)
 
