@@ -2,6 +2,8 @@ from ucimlrepo import fetch_ucirepo
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, RobustScaler, OneHotEncoder
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
+import seaborn as sns
 from sklearn.impute import SimpleImputer
 from sklearn.decomposition import PCA
 import matplotlib.pyplot as plt
@@ -436,6 +438,7 @@ print("학습 완료")
 
 X_val_tf = tf.convert_to_tensor(X_test_scaled, dtype=tf.float32)
 y_val_onehot_tf = tf.convert_to_tensor(y_test_onehot, dtype=tf.float32)
+y_true = tf.argmax(y_val_onehot_tf, axis=1).numpy()
 
 Z1_val = tf.matmul(X_val_tf, W1_tf_var) + b1_tf_var
 A1_val = tf.nn.leaky_relu(Z1_val, alpha=0.001)
@@ -443,6 +446,19 @@ Z2_val = tf.matmul(A1_val, W2_tf_var) + b2_tf_var
 y_pred_val = tf.nn.softmax(Z2_val)
 val_loss = -tf.reduce_mean(tf.reduce_sum(y_val_onehot_tf * tf.math.log(y_pred_val + 1e-8), axis=1))
 tf.print("Validation Loss:", val_loss)
+y_pred = tf.argmax(y_pred_val, axis=1).numpy()
+# 정확도 계산
+acc = accuracy_score(y_true, y_pred)
+print("Accuracy:", acc)
+# 분류 리포트 출력
+print(classification_report(y_true, y_pred))
+# cm = confusion_matrix(y_true, y_pred)
+# plt.figure(figsize=(8, 6))
+# sns.heatmap(cm, annot=True, fmt="d", cmap="Blues")
+# plt.xlabel("Predicted Label")
+# plt.ylabel("True Label")
+# plt.title("adam Confusion Matrix")
+# plt.show()
 
 Z1_val = tf.matmul(X_val_tf, tf.transpose(_W1_tf)) + tf.transpose(_b1_tf)
 A1_val = tf.nn.leaky_relu(Z1_val, alpha=0.001)
@@ -450,5 +466,17 @@ Z2_val = tf.matmul(A1_val, tf.transpose(_W2_tf)) + tf.transpose(_b2_tf)
 y_pred_val = tf.nn.softmax(Z2_val)
 loss_val = -tf.reduce_mean(tf.reduce_sum(y_val_onehot_tf * tf.math.log(y_pred_val + 1e-8), axis=1))
 tf.print("my validation loss :", loss_val)
-
+y_pred = tf.argmax(y_pred_val, axis=1).numpy()
+# 정확도 계산
+acc = accuracy_score(y_true, y_pred)
+print("Accuracy:", acc)
+# 분류 리포트 출력
+print(classification_report(y_true, y_pred))
+# cm = confusion_matrix(y_true, y_pred)
+# plt.figure(figsize=(8, 6))
+# sns.heatmap(cm, annot=True, fmt="d", cmap="Blues")
+# plt.xlabel("Predicted Label")
+# plt.ylabel("True Label")
+# plt.title("my Confusion Matrix")
+# plt.show()
   
