@@ -12,12 +12,16 @@ import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
 import time
+import math
+import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # '2' 또는 '3'으로 설정하면 INFO 메시지를 숨깁니다.
 
 
 beta1 = 0.9
 beta2 = 0.999
 adam_epsilon = 1e-8
-split_num = 10
+split_num = 3
+adam_mini_batch = 100
 
 ###############################################################################################################
 ###############################################################################################################
@@ -46,7 +50,7 @@ X_imputed = pd.DataFrame(imputer.fit_transform(X), columns=X.columns)
 #     plt.show()
 
 # 2. 이상치 탐지 및 제거: IQR 방법 (각 특성별 IQR을 계산하여 이상치 제거)
-def remove_outliers_iqr(df, factor=4.5):
+def remove_outliers_iqr(df, factor=3):
     Q1 = df.quantile(0.25)
     Q3 = df.quantile(0.75)
     IQR = Q3 - Q1
@@ -114,14 +118,16 @@ N = X_train_scaled.shape[0]         # 데이터 샘플 수
 D = X_train_scaled.shape[1]            # 입력 차원
 hidden_dim = X_train_scaled.shape[1] * 3
 num_classes = y_train_onehot.shape[1]  # 클래스 수
-iterator = 50
+iterator = 30
 epsilon = 1e-16
 N_float = tf.cast(N, tf.float32)
+batch_size = int(N/adam_mini_batch)
+steps_per_epoch = math.ceil(N / batch_size)
 
-# mL = tf.Variable(tf.zeros(shape=(hidden_dim, D + 1)), trainable=False)
-# vL = tf.Variable(tf.zeros(shape=(hidden_dim, D + 1)), trainable=False)
-# mL2 = tf.Variable(tf.zeros(shape=(num_classes, hidden_dim + 1)), trainable=False)
-# vL2 = tf.Variable(tf.zeros(shape=(num_classes, hidden_dim + 1)), trainable=False)
+mL = tf.Variable(tf.zeros(shape=(hidden_dim, D + 1)), trainable=False)
+vL = tf.Variable(tf.zeros(shape=(hidden_dim, D + 1)), trainable=False)
+mL2 = tf.Variable(tf.zeros(shape=(num_classes, hidden_dim + 1)), trainable=False)
+vL2 = tf.Variable(tf.zeros(shape=(num_classes, hidden_dim + 1)), trainable=False)
 ###############################################################################################################
 ###############################################################################################################
 ###############################################################################################################
@@ -300,11 +306,10 @@ def P_matrix_tf(X, Y, W1, b1, W2, b2, learn):
     sol2 = tf.matmul(pinv_A, tf.expand_dims(GP2, axis=2))
     L_r2 = tf.squeeze(tf.transpose(sol2, perm=[0, 2, 1]), axis=1)
 
-
-    loss = 0
     normL = np.linalg.norm(L_r)
     normL2 = np.linalg.norm(L_r2)
-    for it in range(0,6) :
+    loss = 0
+    for it in range(0,5) :
         # matrix1 = P1 - learn * L_r
         matrix1 = P1 - learn * (L_r / normL)
         cpW1 = matrix1[:, :n]         
@@ -331,7 +336,7 @@ def ret_weight_tf(transformed_folds_tensor, W1, b1, W2, b2, iter=1):
     cpb1 = tf.identity(b1)
     cpW2 = tf.identity(W2)
     cpb2 = tf.identity(b2)
-    learn = tf.constant(2.0, dtype=tf.float32)
+    learn = tf.constant(3, dtype=tf.float32)
     num_folds = len(transformed_folds_tensor)
 
     for it in tf.range(iter):
@@ -344,8 +349,8 @@ def ret_weight_tf(transformed_folds_tensor, W1, b1, W2, b2, iter=1):
         tf.print("loss_Z-", it, ":", loss)
         if learn < 1e-5:
             break
-        if learn < 2:
-            learn = tf.minimum(learn * 2, 2)
+        if learn < 2.5:
+            learn = tf.minimum(learn * 2, 2.5)
     return cpW1, cpb1, cpW2, cpb2
 
 ##############################################
@@ -407,8 +412,8 @@ tf.print("my loss :", loss_val)
 ##############################################
 #                Adam 학습                #
 ##############################################
-lr = 0.15
-epochs = 800
+lr = 0.1
+epochs = 600
 
 mW1 = tf.Variable(tf.zeros_like(W1_tf_var), trainable=False)
 vb1 = tf.Variable(tf.zeros_like(b1_tf_var), trainable=False)
@@ -420,59 +425,87 @@ vb1_v = tf.Variable(tf.zeros_like(b1_tf_var), trainable=False)
 vb2_v = tf.Variable(tf.zeros_like(b2_tf_var), trainable=False)
 
 loss_history = []
-start = time.perf_counter()
-for epoch in range(1, epochs+1):
-    Z1 = tf.matmul(X_tf, W1_tf_var) + b1_tf_var
-    A1 = tf.nn.leaky_relu(Z1, alpha=0.001)
-    Z2 = tf.matmul(A1, W2_tf_var) + b2_tf_var
-    y_pred = tf.nn.softmax(Z2)
-    loss = -tf.reduce_mean(tf.reduce_sum(y_onehot_tf * tf.math.log(y_pred + 1e-8), axis=1))
-    loss_history.append(loss.numpy())
 
-    if loss < 0.01:
-        tf.print("Epoch", epoch, "Loss:", loss)
+# 데이터셋을 tf.data.Dataset 형태로 구성 (X_tf, y_onehot_tf는 전체 데이터의 텐서)
+dataset = tf.data.Dataset.from_tensor_slices((X_tf, y_onehot_tf))
+dataset = dataset.shuffle(buffer_size=N, reshuffle_each_iteration=True).batch(batch_size).repeat()
+
+start = time.perf_counter()
+
+for epoch in range(1, epochs+1):
+    epoch_losses = []  # 에포크 내 미니배치 손실 저장 리스트
+    
+    # 한 에폭(epoch)은 전체 데이터셋을 순회하는 것
+    for X_batch, y_batch in dataset.take(steps_per_epoch):
+        # 미니배치 크기를 동적으로 구하기
+        current_batch_size = tf.cast(tf.shape(X_batch)[0], tf.float32)
+        
+        # 순전파(forward pass)
+        Z1 = tf.matmul(X_batch, W1_tf_var) + b1_tf_var
+        A1 = tf.nn.leaky_relu(Z1, alpha=0.001)
+        Z2 = tf.matmul(A1, W2_tf_var) + b2_tf_var
+        y_pred = tf.nn.softmax(Z2)
+        
+        # 손실 함수 계산 (교차 엔트로피)
+        loss = -tf.reduce_mean(tf.reduce_sum(y_batch * tf.math.log(y_pred + 1e-8), axis=1))
+        epoch_losses.append(loss.numpy())
+        
+        # 역전파 (backward pass)
+        dZ2 = y_pred - y_batch
+        dW2 = tf.matmul(tf.transpose(A1), dZ2) / current_batch_size
+        db2_grad = tf.reduce_sum(dZ2, axis=0, keepdims=True) / current_batch_size
+        
+        dA1 = tf.matmul(dZ2, tf.transpose(W2_tf_var))
+        # relu_deriv 함수는 활성함수의 미분을 계산하는 함수라고 가정합니다.
+        dZ1 = dA1 * relu_deriv(Z1)
+        dW1 = tf.matmul(tf.transpose(X_batch), dZ1) / current_batch_size
+        db1_grad = tf.reduce_sum(dZ1, axis=0, keepdims=True) / current_batch_size
+        
+        # 여기서는 단순화를 위해 에폭 번호를 t로 사용 (미니배치 업데이트 수 반영 X)
+        t = epoch
+        
+        # 1차 모멘텀 업데이트
+        mW1.assign(beta1 * mW1 + (1 - beta1) * dW1)
+        mW2.assign(beta1 * mW2 + (1 - beta1) * dW2)
+        vb1.assign(beta1 * vb1 + (1 - beta1) * db1_grad)
+        vb2.assign(beta1 * vb2 + (1 - beta1) * db2_grad)
+        
+        # 2차 모멘텀 업데이트
+        vW1.assign(beta2 * vW1 + (1 - beta2) * tf.square(dW1))
+        vW2.assign(beta2 * vW2 + (1 - beta2) * tf.square(dW2))
+        vb1_v.assign(beta2 * vb1_v + (1 - beta2) * tf.square(db1_grad))
+        vb2_v.assign(beta2 * vb2_v + (1 - beta2) * tf.square(db2_grad))
+        
+        # Bias correction
+        mW1_corr = mW1 / (1 - beta1**t)
+        mW2_corr = mW2 / (1 - beta1**t)
+        vb1_corr = vb1 / (1 - beta1**t)
+        vb2_corr = vb2 / (1 - beta1**t)
+        vW1_corr = vW1 / (1 - beta2**t)
+        vW2_corr = vW2 / (1 - beta2**t)
+        vb1_v_corr = vb1_v / (1 - beta2**t)
+        vb2_v_corr = vb2_v / (1 - beta2**t)
+        
+        # 파라미터 업데이트
+        W1_tf_var.assign(W1_tf_var - lr * mW1_corr / (tf.sqrt(vW1_corr) + adam_epsilon))
+        b1_tf_var.assign(b1_tf_var - lr * vb1_corr / (tf.sqrt(vb1_v_corr) + adam_epsilon))
+        W2_tf_var.assign(W2_tf_var - lr * mW2_corr / (tf.sqrt(vW2_corr) + adam_epsilon))
+        b2_tf_var.assign(b2_tf_var - lr * vb2_corr / (tf.sqrt(vb2_v_corr) + adam_epsilon))
+    
+    # 에포크당 평균 손실 계산
+    epoch_loss_avg = np.mean(epoch_losses)
+    loss_history.append(epoch_loss_avg)
+
+    if epoch_loss_avg < 0.02:
+        tf.print("Epoch", epoch, "Loss:", epoch_loss_avg)
         break
     
-    dZ2 = y_pred - y_onehot_tf
-    dW2 = tf.matmul(tf.transpose(A1), dZ2) / tf.cast(N, tf.float32)
-    db2_grad = tf.reduce_sum(dZ2, axis=0, keepdims=True) / tf.cast(N, tf.float32)
-    
-    dA1 = tf.matmul(dZ2, tf.transpose(W2_tf_var))
-    dZ1 = dA1 * relu_deriv(Z1)
-    dW1 = tf.matmul(tf.transpose(X_tf), dZ1) / tf.cast(N, tf.float32)
-    db1_grad = tf.reduce_sum(dZ1, axis=0, keepdims=True) / tf.cast(N, tf.float32)
-    
-    t = epoch
-    mW1.assign(beta1 * mW1 + (1 - beta1) * dW1)
-    mW2.assign(beta1 * mW2 + (1 - beta1) * dW2)
-    vb1.assign(beta1 * vb1 + (1 - beta1) * db1_grad)
-    vb2.assign(beta1 * vb2 + (1 - beta1) * db2_grad)
-    
-    vW1.assign(beta2 * vW1 + (1 - beta2) * tf.square(dW1))
-    vW2.assign(beta2 * vW2 + (1 - beta2) * tf.square(dW2))
-    vb1_v.assign(beta2 * vb1_v + (1 - beta2) * tf.square(db1_grad))
-    vb2_v.assign(beta2 * vb2_v + (1 - beta2) * tf.square(db2_grad))
-    
-    mW1_corr = mW1 / (1 - beta1**t)
-    mW2_corr = mW2 / (1 - beta1**t)
-    vb1_corr = vb1 / (1 - beta1**t)
-    vb2_corr = vb2 / (1 - beta1**t)
-    vW1_corr = vW1 / (1 - beta2**t)
-    vW2_corr = vW2 / (1 - beta2**t)
-    vb1_v_corr = vb1_v / (1 - beta2**t)
-    vb2_v_corr = vb2_v / (1 - beta2**t)
-    
-    W1_tf_var.assign(W1_tf_var - lr * mW1_corr / (tf.sqrt(vW1_corr) + adam_epsilon))
-    b1_tf_var.assign(b1_tf_var - lr * vb1_corr / (tf.sqrt(vb1_v_corr) + adam_epsilon))
-    W2_tf_var.assign(W2_tf_var - lr * mW2_corr / (tf.sqrt(vW2_corr) + adam_epsilon))
-    b2_tf_var.assign(b2_tf_var - lr * vb2_corr / (tf.sqrt(vb2_v_corr) + adam_epsilon))
-    
-    if epoch in [1, 50]:
-        tf.print("Epoch", epoch, "Loss:", loss)
-    if epoch % 200 == 0 or epoch == epochs:
-        tf.print("Epoch", epoch, "Loss:", loss)
+    # 중간 결과 출력
+    if epoch in [1, 50] or epoch % 200 == 0 or epoch == epochs:
+        tf.print("Epoch", epoch, "Loss:", epoch_loss_avg)
+
 end = time.perf_counter()
-print("Adam 학습 코드 실행 시간: {:.4f} 초".format(end - start))
+print("Adam 미니배치 학습 코드 실행 시간: {:.4f} 초".format(end - start))
 print("학습 완료")
 
 

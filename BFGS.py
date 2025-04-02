@@ -45,7 +45,7 @@ X_imputed = pd.DataFrame(imputer.fit_transform(X), columns=X.columns)
 #     plt.show()
 
 # 2. 이상치 탐지 및 제거: IQR 방법 (각 특성별 IQR을 계산하여 이상치 제거)
-def remove_outliers_iqr(df, factor=4.5):
+def remove_outliers_iqr(df, factor=3):
     Q1 = df.quantile(0.25)
     Q3 = df.quantile(0.75)
     IQR = Q3 - Q1
@@ -68,21 +68,15 @@ X_train, X_test, y_train, y_test = train_test_split(
     X_no_outliers, y, test_size=0.2, stratify=y
 )
 
-__, X_val, _, y_val = train_test_split(
-    X_no_outliers, y, test_size=0.5, stratify=y
-)
-
 # 4. 특성 스케일링: RobustScaler 사용 예시 (이상치에 민감하지 않음)
 scaler = RobustScaler()
 X_train_scaled = scaler.fit_transform(X_train)
 X_test_scaled = scaler.transform(X_test)
-X_val_scaled = scaler.transform(X_val)
 
 # 6. 레이블 One-Hot 인코딩: y_train, y_test가 pandas Series인 경우 변환
 encoder = OneHotEncoder(sparse_output=False)
 y_train_onehot = encoder.fit_transform(y_train.values.reshape(-1, 1))
 y_test_onehot = encoder.transform(y_test.values.reshape(-1, 1))
-y_val_onehot = encoder.transform(y_val.values.reshape(-1, 1))
 
 ###############################################################################################################
 ###############################################################################################################
@@ -107,9 +101,6 @@ N_float = tf.cast(N, tf.float32)
 # NumPy 데이터 -> TensorFlow 텐서 (dtype=tf.float32)
 X_tf = tf.convert_to_tensor(X_train_scaled, dtype=tf.float32)           # (N, D)
 y_onehot_tf = tf.convert_to_tensor(y_train_onehot, dtype=tf.float32)  # (N, num_classes)
-
-X_test_tf = tf.convert_to_tensor(X_val_scaled, dtype=tf.float32)
-y_test_onehot_tf = tf.convert_to_tensor(y_val_onehot, dtype=tf.float32)
 
 # 활성화 및 미분 함수 정의
 def softmax(x):
@@ -281,7 +272,6 @@ def P_matrix_tf(X, Y, W1, b1, W2, b2, learn):
     sol2 = tf.matmul(pinv_A, tf.expand_dims(GP2, axis=2))
     L_r2 = tf.squeeze(tf.transpose(sol2, perm=[0, 2, 1]), axis=1)
 
-
     loss = 0
     normL = np.linalg.norm(L_r)
     normL2 = np.linalg.norm(L_r2)
@@ -292,15 +282,15 @@ def P_matrix_tf(X, Y, W1, b1, W2, b2, learn):
         matrix2 = P2 - learn * (L_r2 / normL2)
         cpW2 = matrix2[:, :m]
         cpb2 = tf.reshape(matrix2[:, m], [p, 1])
-        Z1 = tf.matmul(cpW1, tf.transpose(X_test_tf)) + cpb1
+        Z1 = tf.matmul(cpW1, X) + cpb1
         h = tf.nn.leaky_relu(Z1, alpha=0.001)
         Z2 = tf.matmul(cpW2, h) + cpb2
         y_pred = tf.nn.softmax(tf.transpose(Z2))
-        loss = -tf.reduce_mean(tf.reduce_sum(y_test_onehot_tf * tf.math.log(y_pred + 1e-8), axis=1))
+        loss = -tf.reduce_mean(tf.reduce_sum(y_T * tf.math.log(y_pred + 1e-8), axis=1))
         if loss < prev_loss :
             break
         else :
-            learn *= 0.125
+            learn *= 0.25
     return cpW1, cpb1, cpW2, cpb2, loss, learn
 
 # @tf.function
@@ -318,8 +308,8 @@ def ret_weight_tf(X, Y, W1, b1, W2, b2, iter=1):
         cpW1, cpb1, cpW2, cpb2, loss, learn = P_matrix_tf(X, Y, cpW1, cpb1, cpW2, cpb2, learn)
         tf.print("loss_Z-", it, ":", loss)
         # tf.print("learn_Z-", it, ":", learn)
-        if learn < 1.5:
-            learn = tf.minimum(learn * 4, 1.5)
+        if learn < 2:
+            learn = tf.minimum(learn * 2, 2)
         if learn < 1e-4:
             break
     return cpW1, cpb1, cpW2, cpb2
