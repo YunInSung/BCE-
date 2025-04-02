@@ -4,12 +4,12 @@ from sklearn.datasets import make_blobs
 import time
 
 N = 10000         # 데이터 샘플 수
-D = 12             # 입력 차원
-hidden_dim = 24
+D = 8             # 입력 차원
+hidden_dim = 16
 size = N
 epsilon = 1e-8
 iterator = 50
-num_classes = 6   # 클래스 수
+num_classes = 4   # 클래스 수
 ######################################################################################################
 ######################################################################################################
 ######################################################################################################
@@ -171,7 +171,7 @@ def ret_weight(X, Y, W1, b1, W2, b2, loss0, iter=1) :
     cpW2 = W2.copy()
     cpb2 = b2.copy()
     prevW1, prevb1, prevW2, prevb2 = cpW1, cpb1, cpW2, cpb2
-    learn = 0.01
+    learn = 0.0025
     continous = 0
     for it in range(0, iter) :
         ###############
@@ -187,12 +187,12 @@ def ret_weight(X, Y, W1, b1, W2, b2, loss0, iter=1) :
         loss = -np.mean(np.sum(y * np.log(y_pred + 1e-8), axis=1))
         print(f'loss_Z-{it} : {loss}\n')
         if loss > prev_loss :
-            learn *= 0.5
+            learn *= 0.25
             continous = 0
             print(f'it : {it} - learn : {learn}')
             continue
-        if continous >= 2 and learn < 0.75 :
-            learn *= 1.35
+        if continous >= 2 and learn < 0.3 :
+            learn *= 2
         prevW1, prevb1, prevW2, prevb2 = cpW1, cpb1, cpW2, cpb2
         prev_loss = loss
     return prevW1, prevb1, prevW2, prevb2
@@ -208,7 +208,7 @@ def ret_weight(X, Y, W1, b1, W2, b2, loss0, iter=1) :
 # for i in [35, 49, 72, 82, 85, 104, 106, 115, 129, 137] : 
 # for i in [137] : 
 # for i in range(151, 301) : 
-np.random.seed(129)
+np.random.seed()
 # 8차원 입력 데이터를 무작위 생성
 # 고정된 centers 배열을 정의하여 학습 및 검증 데이터에 동일하게 적용합니다.
 centers = np.array([
@@ -273,7 +273,7 @@ print("loss : : {:.6f}".format(loss_))
 
 # 3. Adam 하이퍼파라미터 설정
 lr = 0.25
-epochs = 800
+epochs = 400
 beta1 = 0.9
 beta2 = 0.999
 epsilon = 1e-8

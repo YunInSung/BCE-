@@ -1,9 +1,11 @@
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
 from sklearn.datasets import make_blobs
+from sklearn.model_selection import train_test_split
 import time
 
-N = 5000          # 데이터 샘플 수
+N = 10000          # 데이터 샘플 수
 D = 8             # 입력 차원
 num_classes = 4   # 클래스 수
 hidden_dim1 = 16    # 첫 번째 은닉층 크기
@@ -247,11 +249,11 @@ def ret_weight(X, Y, W1, b1, W2, b2, W3, b3, loss0, iter=1) :
     cpW3 = W3.copy()
     cpb3 = b3.copy()
     prevW1, prevb1, prevW2, prevb2, prevW3, prevb3 = cpW1, cpb1, cpW2, cpb2, cpW3, cpb3
-    learn = 0.05
+    learn = 0.0025
     continous = 0
     for it in range(0, iter) :
         ###############
-        if loss < 1e-4:
+        if loss < 1e-5:
             break
         cpW1, cpb1, cpW2, cpb2, cpW3, cpb3 = P_matrix(X, Y, prevW1, prevb1, prevW2, prevb2, prevW3, prevb3, learn)
         continous += 1
@@ -265,12 +267,14 @@ def ret_weight(X, Y, W1, b1, W2, b2, W3, b3, loss0, iter=1) :
         loss = -np.mean(np.sum(y * np.log(y_pred_ + 1e-8), axis=1))
         print(f'loss_Z-{it} : {loss}\n')
         if loss > prev_loss :
-            learn *= 0.45
+            learn *= 0.25
             continous = 0
             print(f'it : {it} - learn : {learn}')
             continue
-        if continous >= 3 and learn < 0.75 :
-            learn *= 1.45
+        if continous >= 2 and learn < 0.2 :
+            learn *= 2
+            if learn > 0.2 :
+                learn = 0.2
         prevW1, prevb1, prevW2, prevb2, prevW3, prevb3 = cpW1, cpb1, cpW2, cpb2, cpW3, cpb3
         prev_loss = loss
     return prevW1, prevb1, prevW2, prevb2, prevW3, prevb3
@@ -297,7 +301,28 @@ centers = np.array([
 
 # 학습 데이터 생성
 X, y = make_blobs(n_samples=N, n_features=D, centers=centers, cluster_std=1.5, random_state=42)
-y = y.reshape(-1, 1)
+
+# 2. 이상치 탐지 및 제거: IQR 방법 (각 특성별 IQR을 계산하여 이상치 제거)
+def remove_outliers_iqr(df, factor=4.5):
+    Q1 = df.quantile(0.25)
+    Q3 = df.quantile(0.75)
+    IQR = Q3 - Q1
+    mask = ~((df < (Q1 - factor * IQR)) | (df > (Q3 + factor * IQR))).any(axis=1)
+    return df[mask]
+
+# numpy 배열 X를 DataFrame으로 변환
+X_df = pd.DataFrame(X)
+
+# 이상치 제거 적용
+X_no_outliers_df = remove_outliers_iqr(X_df)
+
+# 필요하면 다시 numpy 배열로 변환할 수 있습니다.
+X = X_no_outliers_df.values
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.1, stratify=y
+)
+X = X_train
+y = y_train.reshape(-1, 1)
 
 
 # 원-핫 인코딩 함수
@@ -363,7 +388,7 @@ print("loss : : {:.6f}".format(loss_))
 
 
 # Adam 하이퍼파라미터 설정
-lr = 0.25
+lr = 0.15
 epochs = 1200
 beta1 = 0.9
 beta2 = 0.999
@@ -394,6 +419,9 @@ for epoch in range(1, epochs+1):
     
     # 손실 함수: 범주형 교차 엔트로피
     loss = -np.mean(np.sum(y_onehot * np.log(y_pred + 1e-8), axis=1))
+    if loss < 1e-5:
+        print(f"Epoch {epoch}, Loss: {loss:.6f}")
+        break
     loss_history.append(loss)
     
     # 역전파: 출력층
@@ -464,9 +492,8 @@ print("Adam 학습 코드 실행 시간: {:.4f} 초".format(end - start))
 print("학습 완료")
 
 # 검증 데이터 생성 및 평가 (학습 데이터와 동일한 centers 사용)
-N_val = int(N * 0.5)
-X_val, y_val = make_blobs(n_samples=N_val, n_features=D, centers=centers, cluster_std=1.5, random_state=42)
-y_val = y_val.reshape(-1, 1)
+X_val = X_test
+y_val = y_test.reshape(-1, 1)
 y_val_onehot = one_hot(y_val, num_classes)
 
 Z1_val = X_val.dot(W1) + b1
