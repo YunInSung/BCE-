@@ -20,7 +20,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # '2' 또는 '3'으로 설정하면 IN
 beta1 = 0.9
 beta2 = 0.999
 adam_epsilon = 1e-8
-split_num = 3
+split_num = 4
 adam_mini_batch = 100
 
 ###############################################################################################################
@@ -79,7 +79,7 @@ for fold, (train_index, val_index) in enumerate(skf.split(X_train, y_train)):
     X_fold = X_train.iloc[val_index]  # 각 폴드의 데이터 (검증셋처럼 사용)
     y_fold = y_train.iloc[val_index]
     folds.append((X_fold, y_fold))
-    print(f"Fold {fold+1}: {X_fold.shape}, 클래스 분포: {y_fold.value_counts(normalize=True).to_dict()}")
+    # print(f"Fold {fold+1}: {X_fold.shape}, 클래스 분포: {y_fold.value_counts(normalize=True).to_dict()}")
 
 # 4. 특성 스케일링: RobustScaler 사용 예시 (이상치에 민감하지 않음)
 scaler = RobustScaler()
@@ -309,7 +309,7 @@ def P_matrix_tf(X, Y, W1, b1, W2, b2, learn):
     normL = np.linalg.norm(L_r)
     normL2 = np.linalg.norm(L_r2)
     loss = 0
-    for it in range(0,5) :
+    for _ in range(0,10) :
         # matrix1 = P1 - learn * L_r
         matrix1 = P1 - learn * (L_r / normL)
         cpW1 = matrix1[:, :n]         
@@ -627,7 +627,7 @@ start_time = time.time()
 results = tfp.optimizer.lbfgs_minimize(
     value_and_gradients_function=value_and_gradients_function,
     initial_position=tf.convert_to_tensor(init_params, dtype=tf.float32),
-    max_iterations=50
+    max_iterations=40
 )
 
 # 학습 종료 시간 측정
