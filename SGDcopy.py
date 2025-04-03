@@ -118,7 +118,7 @@ N = X_train_scaled.shape[0]         # 데이터 샘플 수
 D = X_train_scaled.shape[1]            # 입력 차원
 hidden_dim = X_train_scaled.shape[1] * 3
 num_classes = y_train_onehot.shape[1]  # 클래스 수
-iterator = 30
+iterator = 50
 epsilon = 1e-16
 N_float = tf.cast(N, tf.float32)
 batch_size = int(N/adam_mini_batch)
@@ -339,18 +339,27 @@ def ret_weight_tf(transformed_folds_tensor, W1, b1, W2, b2, iter=1):
     learn = tf.constant(3, dtype=tf.float32)
     num_folds = len(transformed_folds_tensor)
 
-    for it in tf.range(iter):
-        idx = it % num_folds
-        X = tf.transpose(transformed_folds_tensor[idx][0])
-        Y = tf.transpose(transformed_folds_tensor[idx][1])
-        if loss < 0.01:
+    it = 0
+    for _ in tf.range(iter):
+        x_batch, y_batch = 0, 0
+        shuffled_indices = np.random.permutation(num_folds)
+        for idx in shuffled_indices:
+            x_batch, y_batch = transformed_folds_tensor[idx]
+            X = tf.transpose(x_batch)
+            Y = tf.transpose(y_batch)
+            if loss < 0.01:
+                break
+            cpW1, cpb1, cpW2, cpb2, loss, learn = P_matrix_tf(X, Y, cpW1, cpb1, cpW2, cpb2, learn)
+            tf.print("loss_Z-", it, ":", loss)
+            if learn < 1e-5:
+                break
+            if learn < 2.5:
+                learn = tf.minimum(learn * 2, 2.5)
+            it += 1
+            if it > iter :
+                break
+        if (it > iter) or (loss < 0.01) :
             break
-        cpW1, cpb1, cpW2, cpb2, loss, learn = P_matrix_tf(X, Y, cpW1, cpb1, cpW2, cpb2, learn)
-        tf.print("loss_Z-", it, ":", loss)
-        if learn < 1e-5:
-            break
-        if learn < 2.5:
-            learn = tf.minimum(learn * 2, 2.5)
     return cpW1, cpb1, cpW2, cpb2
 
 ##############################################
