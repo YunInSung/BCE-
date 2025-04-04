@@ -439,90 +439,49 @@ tf.print("my loss :", loss_val)
 ##############################################
 #                Adam 학습                #
 ##############################################
-lr = 0.05
+lr = 0.1
 epochs = 600
 
-mW1 = tf.Variable(tf.zeros_like(W1_tf_var), trainable=False)
-vb1 = tf.Variable(tf.zeros_like(b1_tf_var), trainable=False)
-mW2 = tf.Variable(tf.zeros_like(W2_tf_var), trainable=False)
-vb2 = tf.Variable(tf.zeros_like(b2_tf_var), trainable=False)
-vW1 = tf.Variable(tf.zeros_like(W1_tf_var), trainable=False)
-vW2 = tf.Variable(tf.zeros_like(W2_tf_var), trainable=False)
-vb1_v = tf.Variable(tf.zeros_like(b1_tf_var), trainable=False)
-vb2_v = tf.Variable(tf.zeros_like(b2_tf_var), trainable=False)
+optimizer = tf.keras.optimizers.Adam(learning_rate=lr)
 
-loss_history = []
-
-# 데이터셋을 tf.data.Dataset 형태로 구성 (X_tf, y_onehot_tf는 전체 데이터의 텐서)
-dataset = tf.data.Dataset.from_tensor_slices((X_tf, y_onehot_tf))
-dataset = dataset.shuffle(buffer_size=N, reshuffle_each_iteration=True).batch(batch_size).repeat()
-
-start = time.perf_counter()
-
-for epoch in range(1, epochs+1):
-    epoch_losses = []  # 에포크 내 미니배치 손실 저장 리스트
-    
-    # 한 에폭(epoch)은 전체 데이터셋을 순회하는 것
-    for X_batch, y_batch in dataset.take(steps_per_epoch):
-        # 미니배치 크기를 동적으로 구하기
-        current_batch_size = tf.cast(tf.shape(X_batch)[0], tf.float32)
-        
-        # 순전파(forward pass)
+@tf.function
+def train_step(X_batch, y_batch):
+    """
+    tf.function 데코레이터를 사용하여 그래프 컴파일을 진행한 훈련 단계.
+    미니배치에 대해 forward, loss 계산, gradient 산출, 파라미터 업데이트를 수행합니다.
+    """
+    with tf.GradientTape() as tape:
+        # 순전파
         Z1 = tf.matmul(X_batch, W1_tf_var) + b1_tf_var
         A1 = tf.nn.leaky_relu(Z1, alpha=0.001)
         Z2 = tf.matmul(A1, W2_tf_var) + b2_tf_var
         y_pred = tf.nn.softmax(Z2)
-        
-        # 손실 함수 계산 (교차 엔트로피)
+        # 교차 엔트로피 손실 (로그 0 방지를 위해 1e-8 추가)
         loss = -tf.reduce_mean(tf.reduce_sum(y_batch * tf.math.log(y_pred + 1e-8), axis=1))
-        epoch_losses.append(loss.numpy())
-        
-        # 역전파 (backward pass)
-        dZ2 = y_pred - y_batch
-        dW2 = tf.matmul(tf.transpose(A1), dZ2) / current_batch_size
-        db2_grad = tf.reduce_sum(dZ2, axis=0, keepdims=True) / current_batch_size
-        
-        dA1 = tf.matmul(dZ2, tf.transpose(W2_tf_var))
-        # relu_deriv 함수는 활성함수의 미분을 계산하는 함수라고 가정합니다.
-        dZ1 = dA1 * relu_deriv(Z1)
-        dW1 = tf.matmul(tf.transpose(X_batch), dZ1) / current_batch_size
-        db1_grad = tf.reduce_sum(dZ1, axis=0, keepdims=True) / current_batch_size
-        
-        # 여기서는 단순화를 위해 에폭 번호를 t로 사용 (미니배치 업데이트 수 반영 X)
-        t = epoch
-        
-        # 1차 모멘텀 업데이트
-        mW1.assign(beta1 * mW1 + (1 - beta1) * dW1)
-        mW2.assign(beta1 * mW2 + (1 - beta1) * dW2)
-        vb1.assign(beta1 * vb1 + (1 - beta1) * db1_grad)
-        vb2.assign(beta1 * vb2 + (1 - beta1) * db2_grad)
-        
-        # 2차 모멘텀 업데이트
-        vW1.assign(beta2 * vW1 + (1 - beta2) * tf.square(dW1))
-        vW2.assign(beta2 * vW2 + (1 - beta2) * tf.square(dW2))
-        vb1_v.assign(beta2 * vb1_v + (1 - beta2) * tf.square(db1_grad))
-        vb2_v.assign(beta2 * vb2_v + (1 - beta2) * tf.square(db2_grad))
-        
-        # Bias correction
-        mW1_corr = mW1 / (1 - beta1**t)
-        mW2_corr = mW2 / (1 - beta1**t)
-        vb1_corr = vb1 / (1 - beta1**t)
-        vb2_corr = vb2 / (1 - beta1**t)
-        vW1_corr = vW1 / (1 - beta2**t)
-        vW2_corr = vW2 / (1 - beta2**t)
-        vb1_v_corr = vb1_v / (1 - beta2**t)
-        vb2_v_corr = vb2_v / (1 - beta2**t)
-        
-        # 파라미터 업데이트
-        W1_tf_var.assign(W1_tf_var - lr * mW1_corr / (tf.sqrt(vW1_corr) + adam_epsilon))
-        b1_tf_var.assign(b1_tf_var - lr * vb1_corr / (tf.sqrt(vb1_v_corr) + adam_epsilon))
-        W2_tf_var.assign(W2_tf_var - lr * mW2_corr / (tf.sqrt(vW2_corr) + adam_epsilon))
-        b2_tf_var.assign(b2_tf_var - lr * vb2_corr / (tf.sqrt(vb2_v_corr) + adam_epsilon))
-    
-    # 에포크당 평균 손실 계산
-    epoch_loss_avg = np.mean(epoch_losses)
-    loss_history.append(epoch_loss_avg)
+    # 역전파 및 파라미터 업데이트
+    grads = tape.gradient(loss, [W1_tf_var, b1_tf_var, W2_tf_var, b2_tf_var])
+    optimizer.apply_gradients(zip(grads, [W1_tf_var, b1_tf_var, W2_tf_var, b2_tf_var]))
+    return loss
 
+# 미니배치 데이터셋 구성
+dataset = tf.data.Dataset.from_tensor_slices((X_tf, y_onehot_tf))
+dataset = dataset.shuffle(buffer_size=N, reshuffle_each_iteration=True).batch(batch_size).repeat()
+
+loss_history = []
+start_time = time.perf_counter()
+
+for epoch in range(1, epochs+1):
+    epoch_losses = []
+    # 한 epoch 동안 steps_per_epoch 만큼 반복
+    for X_batch, y_batch in dataset.take(steps_per_epoch):
+        loss = train_step(X_batch, y_batch)
+        epoch_losses.append(loss)
+    
+    # 에포크 평균 손실 계산
+    epoch_loss_avg = tf.reduce_mean(epoch_losses)
+    loss_history.append(epoch_loss_avg.numpy())
+    
+    # 손실 조건 만족 시 조기 종료
     if epoch_loss_avg < 0.02:
         tf.print("Epoch", epoch, "Loss:", epoch_loss_avg)
         break
@@ -531,8 +490,8 @@ for epoch in range(1, epochs+1):
     if epoch in [1, 50] or epoch % 200 == 0 or epoch == epochs:
         tf.print("Epoch", epoch, "Loss:", epoch_loss_avg)
 
-end = time.perf_counter()
-print("Adam 미니배치 학습 코드 실행 시간: {:.4f} 초".format(end - start))
+end_time = time.perf_counter()
+print("최적화된 Adam 미니배치 학습 실행 시간: {:.4f} 초".format(end_time - start_time))
 print("학습 완료")
 
 
