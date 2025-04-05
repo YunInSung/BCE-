@@ -26,6 +26,8 @@ beta2 = 0.999
 adam_epsilon = 1e-8
 split_num = 10
 adam_mini_batch = 100
+prop = 0.2
+val_prop = 0.25
 
 ###############################################################################################################
 ###############################################################################################################
@@ -54,7 +56,7 @@ X_imputed = pd.DataFrame(imputer.fit_transform(X), columns=X.columns)
 #     plt.show()
 
 # 2. 이상치 탐지 및 제거: IQR 방법 (각 특성별 IQR을 계산하여 이상치 제거)
-def remove_outliers_iqr(df, factor=4.5):
+def remove_outliers_iqr(df, factor=3):
     Q1 = df.quantile(0.25)
     Q3 = df.quantile(0.75)
     IQR = Q3 - Q1
@@ -74,11 +76,11 @@ y = y.reset_index(drop=True)
 
 # 3. 학습/테스트 데이터 분할 (예: 80% 학습, 20% 테스트)
 X_train, X_test, y_train, y_test = train_test_split(
-    X_no_outliers, y, test_size=0.2, stratify=y
+    X_no_outliers, y, test_size=prop, stratify=y
 )
 
 _, X_var, _, y_var = train_test_split(
-    X_no_outliers, y, test_size=0.5, stratify=y
+    X_no_outliers, y, test_size=val_prop, stratify=y
 )
 
 skf = StratifiedKFold(n_splits=split_num, shuffle=True, random_state=42)
@@ -135,6 +137,7 @@ N_float = tf.cast(N, tf.float32)
 batch_size = 128
 steps_per_epoch = math.ceil(N / batch_size)
 
+print(f'num_classes : {num_classes}')
 mL = tf.Variable(tf.zeros(shape=(hidden_dim, D + 1)), trainable=False)
 vL = tf.Variable(tf.zeros(shape=(hidden_dim, D + 1)), trainable=False)
 mL2 = tf.Variable(tf.zeros(shape=(num_classes, hidden_dim + 1)), trainable=False)
@@ -357,7 +360,7 @@ def ret_weight_tf(transformed_folds_tensor, W1, b1, W2, b2, iter=1):
     for it in tf.range(iter):
         x_batch, y_batch = 0, 0
         shuffled_indices = np.random.permutation(num_folds)
-        learn = tf.constant(3, dtype=tf.float32)
+        learn = tf.constant(2.5, dtype=tf.float32)
         for idx in shuffled_indices:
             x_batch, y_batch = transformed_folds_tensor[idx]
             X = tf.transpose(x_batch)
