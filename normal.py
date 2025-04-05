@@ -1,17 +1,17 @@
 # 현 데이터 말고도, 임의로 만들어낸 데이터로도 실험해보기
-from ucimlrepo import fetch_ucirepo
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, RobustScaler, OneHotEncoder
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 import seaborn as sns
+from sklearn.datasets import make_blobs
 from sklearn.impute import SimpleImputer
 from sklearn.model_selection import StratifiedKFold
 from sklearn.decomposition import PCA
 import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
-import tensorflow_probability as tfp
+# import tensorflow_probability as tfp
 import time
 import math
 import os
@@ -27,127 +27,92 @@ adam_epsilon = 1e-8
 split_num = 10
 adam_mini_batch = 100
 
+
+# 상수 및 데이터셋 설정
+prop = 0.2
+N = 25000         # 데이터 샘플 수
+D = 6            # 입력 차원
+
 ###############################################################################################################
 ###############################################################################################################
 ###############################################################################################################
   
-# fetch dataset 
-statlog_shuttle = fetch_ucirepo(id=148) 
-  
-# data (as pandas dataframes)
-X = statlog_shuttle.data.features 
-y = statlog_shuttle.data.targets
+# 데이터 생성 (NumPy)
+np.random.seed(42)
+center_values = [-5.0, -3.0, -1.0, 1.0, 3.0, 5.0]
+centers = np.array([np.full(D, val, dtype=np.float32) for val in center_values])
+X_np, y_np = make_blobs(n_samples=N, n_features=D, centers=centers, 
+                          cluster_std=1.5, random_state=42)
+X_np = X_np.astype(np.float32)
+y_np = y_np.reshape(-1, 1)  # (N, 1)
 
-# 인덱스 초기화: 불러온 직후 고유한 인덱스로 만듦
-X = X.reset_index(drop=True)
-y = y.reset_index(drop=True)
-
-# 1. 결측치 처리: SimpleImputer를 이용해 결측치를 중간값(median)으로 대체
-imputer = SimpleImputer(strategy='median')
-X_imputed = pd.DataFrame(imputer.fit_transform(X), columns=X.columns)
-
-# for col in X_imputed.columns:
-#     plt.figure()
-#     plt.boxplot(X_imputed[col])
-#     plt.title(f"{col} - Boxplot")
-#     plt.ylabel(col)
-#     plt.show()
-
-# 2. 이상치 탐지 및 제거: IQR 방법 (각 특성별 IQR을 계산하여 이상치 제거)
-def remove_outliers_iqr(df, factor=4.5):
-    Q1 = df.quantile(0.25)
-    Q3 = df.quantile(0.75)
-    IQR = Q3 - Q1
-    mask = ~((df < (Q1 - factor * IQR)) | (df > (Q3 + factor * IQR))).any(axis=1)
-    return df[mask]
-
-X_no_outliers = remove_outliers_iqr(X_imputed)
-# X_no_outliers = X_imputed
-print("이상치 제거 후 shape:", X_no_outliers.shape)
-
-# X_no_outliers는 X의 일부 행을 유지하므로, 그에 해당하는 y의 행만 선택
-y = y.loc[X_no_outliers.index]
-
-# 인덱스를 다시 초기화하여 둘 다 0부터 시작하는 연속된 인덱스로 맞춤
-X_no_outliers = X_no_outliers.reset_index(drop=True)
-y = y.reset_index(drop=True)
-
-# 3. 학습/테스트 데이터 분할 (예: 80% 학습, 20% 테스트)
+# 2. 학습/테스트 데이터 분할 (80% 학습, 20% 테스트)
+# stratify는 1차원 배열을 요구하므로 ravel() 사용
 X_train, X_test, y_train, y_test = train_test_split(
-    X_no_outliers, y, test_size=0.2, stratify=y
+    X_np, y_np.ravel(), test_size=prop, stratify=y_np.ravel(), random_state=42
 )
 
 _, X_var, _, y_var = train_test_split(
-    X_no_outliers, y, test_size=0.5, stratify=y
+    X_np, y_np.ravel(), test_size=prop, stratify=y_np.ravel(), random_state=42
 )
 
+# 3. Stratified K-Fold 분할 (NumPy 배열 인덱싱 사용)
 skf = StratifiedKFold(n_splits=split_num, shuffle=True, random_state=42)
 folds = []
 for fold, (train_index, val_index) in enumerate(skf.split(X_train, y_train)):
-    X_fold = X_train.iloc[val_index]  # 각 폴드의 데이터 (검증셋처럼 사용)
-    y_fold = y_train.iloc[val_index]
+    # NumPy 배열 인덱싱 사용 (.iloc 대신)
+    X_fold = X_train[val_index]
+    y_fold = y_train[val_index]
     folds.append((X_fold, y_fold))
-    # print(f"Fold {fold+1}: {X_fold.shape}, 클래스 분포: {y_fold.value_counts(normalize=True).to_dict()}")
+    # 클래스 분포 확인 (np.unique 사용)
+    unique, counts = np.unique(y_fold, return_counts=True)
 
-# 4. 특성 스케일링: RobustScaler 사용 예시 (이상치에 민감하지 않음)
+# 4. 특성 스케일링: RobustScaler 사용
 scaler = RobustScaler()
 X_train_scaled = scaler.fit_transform(X_train)
 X_test_scaled = scaler.transform(X_test)
 X_var_scaled = scaler.transform(X_var)
 
-# 6. 레이블 One-Hot 인코딩: y_train, y_test가 pandas Series인 경우 변환
+# 5. 레이블 One-Hot 인코딩
+# OneHotEncoder는 입력이 2D 배열이어야 하므로 reshape(-1,1) 사용
 encoder = OneHotEncoder(sparse_output=False)
-y_train_onehot = encoder.fit_transform(y_train.values.reshape(-1, 1))
-y_test_onehot = encoder.transform(y_test.values.reshape(-1, 1))
-y_var_onehot = encoder.transform(y_var.values.reshape(-1, 1))
+y_train_onehot = encoder.fit_transform(y_train.reshape(-1, 1))
+y_test_onehot = encoder.transform(y_test.reshape(-1, 1))
+y_var_onehot = encoder.transform(y_var.reshape(-1, 1))
 
-all_classes = np.unique(y_train.values)
-# OneHotEncoder를 전체 클래스 목록으로 설정합니다.
+# 전체 클래스 목록 설정 (필요한 경우)
+all_classes = np.unique(y_train)
 encoder = OneHotEncoder(categories=[all_classes], sparse_output=False)
-encoder.fit(y_train.values.reshape(-1, 1))
+encoder.fit(y_train.reshape(-1, 1))
+
+# 6. 각 폴드에 대해 스케일링, One-Hot 인코딩 후 TensorFlow 텐서로 변환
 transformed_folds_tensor = []
 for X_fold, y_fold in folds:
-    # 1. 스케일링 적용: RobustScaler 사용
-    X_fold_scaled = scaler.fit_transform(X_fold)
-    
-    # 2. 원-핫 인코딩 적용: OneHotEncoder 사용
-    y_fold_onehot = encoder.transform(y_fold.values.reshape(-1, 1))
-    
-    # 3. 텐서플로우 텐서로 변환: dtype=tf.float32 지정
-    X_tf = tf.convert_to_tensor(X_fold_scaled, dtype=tf.float32)
-    y_tf = tf.convert_to_tensor(y_fold_onehot, dtype=tf.float32)
-    
-    # 변환된 텐서를 리스트에 저장
-    transformed_folds_tensor.append((X_tf, y_tf))
+    X_fold_scaled = scaler.transform(X_fold)
+    y_fold_onehot = encoder.transform(y_fold.reshape(-1, 1))
+    X_tf_fold = tf.convert_to_tensor(X_fold_scaled, dtype=tf.float32)
+    y_tf_fold = tf.convert_to_tensor(y_fold_onehot, dtype=tf.float32)
+    transformed_folds_tensor.append((X_tf_fold, y_tf_fold))
 
-###############################################################################################################
-###############################################################################################################
-###############################################################################################################
-# 상수 및 데이터셋 설정
-N = X_train_scaled.shape[0]         # 데이터 샘플 수
-D = X_train_scaled.shape[1]            # 입력 차원
-hidden_dim = int(X_train_scaled.shape[1] * 2)
-num_classes = y_train_onehot.shape[1]  # 클래스 수
+###################################################################################
+###################################################################################
+N = X_train_scaled.shape[0]
+hidden_dim = int(D * 2)
+num_classes = 6 # 클래스 수
 iterator = 6
 epsilon = 1e-16
 N_float = tf.cast(N, tf.float32)
-# batch_size = int(N/adam_mini_batch)
-batch_size = 128
+batch_size = int(N/adam_mini_batch)
+# batch_size = 128
 steps_per_epoch = math.ceil(N / batch_size)
+###################################################################################
+###################################################################################
 
-mL = tf.Variable(tf.zeros(shape=(hidden_dim, D + 1)), trainable=False)
-vL = tf.Variable(tf.zeros(shape=(hidden_dim, D + 1)), trainable=False)
-mL2 = tf.Variable(tf.zeros(shape=(num_classes, hidden_dim + 1)), trainable=False)
-vL2 = tf.Variable(tf.zeros(shape=(num_classes, hidden_dim + 1)), trainable=False)
-###############################################################################################################
-###############################################################################################################
-###############################################################################################################
-
-# NumPy 데이터 -> TensorFlow 텐서 (dtype=tf.float32)
-X_tf = tf.convert_to_tensor(X_train_scaled, dtype=tf.float32)           # (N, D)
-y_onehot_tf = tf.convert_to_tensor(y_train_onehot, dtype=tf.float32)  # (N, num_classes)
-X_var__tf = tf.convert_to_tensor(X_var_scaled, dtype=tf.float32)           # (N, D)
-y_var__onehot_tf = tf.convert_to_tensor(y_var_onehot, dtype=tf.float32)  # (N, num_classes)
+# NumPy 데이터 -> TensorFlow 텐서 (학습 데이터: 80%의 데이터)
+X_tf = tf.convert_to_tensor(X_train_scaled, dtype=tf.float32)           # (N*0.8, D)
+y_onehot_tf = tf.convert_to_tensor(y_train_onehot, dtype=tf.float32)      # (N*0.8, num_classes)
+X_var__tf = tf.convert_to_tensor(X_var_scaled, dtype=tf.float32)
+y_var__onehot_tf = tf.convert_to_tensor(y_var_onehot, dtype=tf.float32)
 
 # 활성화 및 미분 함수 정의
 def softmax(x):
@@ -322,7 +287,7 @@ def P_matrix_tf(X, Y, W1, b1, W2, b2, learn):
     normL = np.linalg.norm(L_r)
     normL2 = np.linalg.norm(L_r2)
     loss = 0
-    for _ in range(0,10) :
+    for _ in range(0,7) :
         # matrix1 = P1 - learn * L_r
         matrix1 = P1 - learn * (L_r / normL)
         cpW1 = matrix1[:, :n]         
@@ -439,49 +404,90 @@ tf.print("my loss :", loss_val)
 ##############################################
 #                Adam 학습                #
 ##############################################
-lr = 0.1
+lr = 0.05
 epochs = 600
 
-optimizer = tf.keras.optimizers.Adam(learning_rate=lr)
+mW1 = tf.Variable(tf.zeros_like(W1_tf_var), trainable=False)
+vb1 = tf.Variable(tf.zeros_like(b1_tf_var), trainable=False)
+mW2 = tf.Variable(tf.zeros_like(W2_tf_var), trainable=False)
+vb2 = tf.Variable(tf.zeros_like(b2_tf_var), trainable=False)
+vW1 = tf.Variable(tf.zeros_like(W1_tf_var), trainable=False)
+vW2 = tf.Variable(tf.zeros_like(W2_tf_var), trainable=False)
+vb1_v = tf.Variable(tf.zeros_like(b1_tf_var), trainable=False)
+vb2_v = tf.Variable(tf.zeros_like(b2_tf_var), trainable=False)
 
-@tf.function
-def train_step(X_batch, y_batch):
-    """
-    tf.function 데코레이터를 사용하여 그래프 컴파일을 진행한 훈련 단계.
-    미니배치에 대해 forward, loss 계산, gradient 산출, 파라미터 업데이트를 수행합니다.
-    """
-    with tf.GradientTape() as tape:
-        # 순전파
+loss_history = []
+
+# 데이터셋을 tf.data.Dataset 형태로 구성 (X_tf, y_onehot_tf는 전체 데이터의 텐서)
+dataset = tf.data.Dataset.from_tensor_slices((X_tf, y_onehot_tf))
+dataset = dataset.shuffle(buffer_size=N, reshuffle_each_iteration=True).batch(batch_size).repeat()
+
+start = time.perf_counter()
+
+for epoch in range(1, epochs+1):
+    epoch_losses = []  # 에포크 내 미니배치 손실 저장 리스트
+    
+    # 한 에폭(epoch)은 전체 데이터셋을 순회하는 것
+    for X_batch, y_batch in dataset.take(steps_per_epoch):
+        # 미니배치 크기를 동적으로 구하기
+        current_batch_size = tf.cast(tf.shape(X_batch)[0], tf.float32)
+        
+        # 순전파(forward pass)
         Z1 = tf.matmul(X_batch, W1_tf_var) + b1_tf_var
         A1 = tf.nn.leaky_relu(Z1, alpha=0.001)
         Z2 = tf.matmul(A1, W2_tf_var) + b2_tf_var
         y_pred = tf.nn.softmax(Z2)
-        # 교차 엔트로피 손실 (로그 0 방지를 위해 1e-8 추가)
+        
+        # 손실 함수 계산 (교차 엔트로피)
         loss = -tf.reduce_mean(tf.reduce_sum(y_batch * tf.math.log(y_pred + 1e-8), axis=1))
-    # 역전파 및 파라미터 업데이트
-    grads = tape.gradient(loss, [W1_tf_var, b1_tf_var, W2_tf_var, b2_tf_var])
-    optimizer.apply_gradients(zip(grads, [W1_tf_var, b1_tf_var, W2_tf_var, b2_tf_var]))
-    return loss
-
-# 미니배치 데이터셋 구성
-dataset = tf.data.Dataset.from_tensor_slices((X_tf, y_onehot_tf))
-dataset = dataset.shuffle(buffer_size=N, reshuffle_each_iteration=True).batch(batch_size).repeat()
-
-loss_history = []
-start_time = time.perf_counter()
-
-for epoch in range(1, epochs+1):
-    epoch_losses = []
-    # 한 epoch 동안 steps_per_epoch 만큼 반복
-    for X_batch, y_batch in dataset.take(steps_per_epoch):
-        loss = train_step(X_batch, y_batch)
-        epoch_losses.append(loss)
+        epoch_losses.append(loss.numpy())
+        
+        # 역전파 (backward pass)
+        dZ2 = y_pred - y_batch
+        dW2 = tf.matmul(tf.transpose(A1), dZ2) / current_batch_size
+        db2_grad = tf.reduce_sum(dZ2, axis=0, keepdims=True) / current_batch_size
+        
+        dA1 = tf.matmul(dZ2, tf.transpose(W2_tf_var))
+        # relu_deriv 함수는 활성함수의 미분을 계산하는 함수라고 가정합니다.
+        dZ1 = dA1 * relu_deriv(Z1)
+        dW1 = tf.matmul(tf.transpose(X_batch), dZ1) / current_batch_size
+        db1_grad = tf.reduce_sum(dZ1, axis=0, keepdims=True) / current_batch_size
+        
+        # 여기서는 단순화를 위해 에폭 번호를 t로 사용 (미니배치 업데이트 수 반영 X)
+        t = epoch
+        
+        # 1차 모멘텀 업데이트
+        mW1.assign(beta1 * mW1 + (1 - beta1) * dW1)
+        mW2.assign(beta1 * mW2 + (1 - beta1) * dW2)
+        vb1.assign(beta1 * vb1 + (1 - beta1) * db1_grad)
+        vb2.assign(beta1 * vb2 + (1 - beta1) * db2_grad)
+        
+        # 2차 모멘텀 업데이트
+        vW1.assign(beta2 * vW1 + (1 - beta2) * tf.square(dW1))
+        vW2.assign(beta2 * vW2 + (1 - beta2) * tf.square(dW2))
+        vb1_v.assign(beta2 * vb1_v + (1 - beta2) * tf.square(db1_grad))
+        vb2_v.assign(beta2 * vb2_v + (1 - beta2) * tf.square(db2_grad))
+        
+        # Bias correction
+        mW1_corr = mW1 / (1 - beta1**t)
+        mW2_corr = mW2 / (1 - beta1**t)
+        vb1_corr = vb1 / (1 - beta1**t)
+        vb2_corr = vb2 / (1 - beta1**t)
+        vW1_corr = vW1 / (1 - beta2**t)
+        vW2_corr = vW2 / (1 - beta2**t)
+        vb1_v_corr = vb1_v / (1 - beta2**t)
+        vb2_v_corr = vb2_v / (1 - beta2**t)
+        
+        # 파라미터 업데이트
+        W1_tf_var.assign(W1_tf_var - lr * mW1_corr / (tf.sqrt(vW1_corr) + adam_epsilon))
+        b1_tf_var.assign(b1_tf_var - lr * vb1_corr / (tf.sqrt(vb1_v_corr) + adam_epsilon))
+        W2_tf_var.assign(W2_tf_var - lr * mW2_corr / (tf.sqrt(vW2_corr) + adam_epsilon))
+        b2_tf_var.assign(b2_tf_var - lr * vb2_corr / (tf.sqrt(vb2_v_corr) + adam_epsilon))
     
-    # 에포크 평균 손실 계산
-    epoch_loss_avg = tf.reduce_mean(epoch_losses)
-    loss_history.append(epoch_loss_avg.numpy())
-    
-    # 손실 조건 만족 시 조기 종료
+    # 에포크당 평균 손실 계산
+    epoch_loss_avg = np.mean(epoch_losses)
+    loss_history.append(epoch_loss_avg)
+
     if epoch_loss_avg < 0.02:
         tf.print("Epoch", epoch, "Loss:", epoch_loss_avg)
         break
@@ -490,8 +496,8 @@ for epoch in range(1, epochs+1):
     if epoch in [1, 50] or epoch % 200 == 0 or epoch == epochs:
         tf.print("Epoch", epoch, "Loss:", epoch_loss_avg)
 
-end_time = time.perf_counter()
-print("최적화된 Adam 미니배치 학습 실행 시간: {:.4f} 초".format(end_time - start_time))
+end = time.perf_counter()
+print("Adam 미니배치 학습 코드 실행 시간: {:.4f} 초".format(end - start))
 print("학습 완료")
 
 
@@ -542,100 +548,100 @@ print(classification_report(y_true, y_pred))
 # plt.show()
   
 
-# 초기 변수는 tf.Variable로 선언할 수도 있지만, lbfgs_minimize에서는 초기 파라미터 벡터를 사용합니다.
-# 따라서 아래와 같이 초기 파라미터 벡터를 생성합니다.
-init_params = np.concatenate([
-    W1_init_copy2.ravel(), 
-    b1_init_copy2.ravel(), 
-    W2_init_copy2.ravel(), 
-    b2_init_copy2.ravel()
-])
+# # 초기 변수는 tf.Variable로 선언할 수도 있지만, lbfgs_minimize에서는 초기 파라미터 벡터를 사용합니다.
+# # 따라서 아래와 같이 초기 파라미터 벡터를 생성합니다.
+# init_params = np.concatenate([
+#     W1_init_copy2.ravel(), 
+#     b1_init_copy2.ravel(), 
+#     W2_init_copy2.ravel(), 
+#     b2_init_copy2.ravel()
+# ])
 
-# 전체 학습/테스트 데이터를 Tensor로 변환
-X_train_tf = tf.convert_to_tensor(X_train_scaled, dtype=tf.float32)
-y_train_tf = tf.convert_to_tensor(y_train_onehot, dtype=tf.float32)
-X_test_tf  = tf.convert_to_tensor(X_test_scaled, dtype=tf.float32)
-y_test_tf  = tf.convert_to_tensor(y_test_onehot, dtype=tf.float32)
+# # 전체 학습/테스트 데이터를 Tensor로 변환
+# X_train_tf = tf.convert_to_tensor(X_train_scaled, dtype=tf.float32)
+# y_train_tf = tf.convert_to_tensor(y_train_onehot, dtype=tf.float32)
+# X_test_tf  = tf.convert_to_tensor(X_test_scaled, dtype=tf.float32)
+# y_test_tf  = tf.convert_to_tensor(y_test_onehot, dtype=tf.float32)
 
-# 미니배치 크기 설정 (예: 128)
-def neural_net_loss_minibatch(params):
-    """
-    파라미터 벡터를 재구성하고, 무작위 미니배치를 사용하여 
-    1-hidden layer 신경망의 cross-entropy loss를 계산합니다.
-    """
-    # 미니배치 샘플링
-    num_samples = tf.shape(X_train_tf)[0]
-    indices = tf.random.uniform(shape=[batch_size], minval=0, maxval=num_samples, dtype=tf.int32)
-    X_batch = tf.gather(X_train_tf, indices)
-    y_batch = tf.gather(y_train_tf, indices)
+# # 미니배치 크기 설정 (예: 128)
+# def neural_net_loss_minibatch(params):
+#     """
+#     파라미터 벡터를 재구성하고, 무작위 미니배치를 사용하여 
+#     1-hidden layer 신경망의 cross-entropy loss를 계산합니다.
+#     """
+#     # 미니배치 샘플링
+#     num_samples = tf.shape(X_train_tf)[0]
+#     indices = tf.random.uniform(shape=[batch_size], minval=0, maxval=num_samples, dtype=tf.int32)
+#     X_batch = tf.gather(X_train_tf, indices)
+#     y_batch = tf.gather(y_train_tf, indices)
     
-    # 파라미터 벡터에서 각 변수 추출
-    idx = 0
-    W1 = tf.reshape(params[idx: idx + D * hidden_dim], (D, hidden_dim))
-    idx += D * hidden_dim
-    b1 = tf.reshape(params[idx: idx + hidden_dim], (hidden_dim,))
-    idx += hidden_dim
-    W2 = tf.reshape(params[idx: idx + hidden_dim * num_classes], (hidden_dim, num_classes))
-    idx += hidden_dim * num_classes
-    b2 = tf.reshape(params[idx: idx + num_classes], (num_classes,))
+#     # 파라미터 벡터에서 각 변수 추출
+#     idx = 0
+#     W1 = tf.reshape(params[idx: idx + D * hidden_dim], (D, hidden_dim))
+#     idx += D * hidden_dim
+#     b1 = tf.reshape(params[idx: idx + hidden_dim], (hidden_dim,))
+#     idx += hidden_dim
+#     W2 = tf.reshape(params[idx: idx + hidden_dim * num_classes], (hidden_dim, num_classes))
+#     idx += hidden_dim * num_classes
+#     b2 = tf.reshape(params[idx: idx + num_classes], (num_classes,))
     
-    # 순전파 계산
-    hidden = tf.nn.relu(tf.matmul(X_batch, W1) + b1)
-    logits = tf.matmul(hidden, W2) + b2
-    loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_batch, logits=logits))
-    return loss
+#     # 순전파 계산
+#     hidden = tf.nn.relu(tf.matmul(X_batch, W1) + b1)
+#     logits = tf.matmul(hidden, W2) + b2
+#     loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_batch, logits=logits))
+#     return loss
 
-def compute_validation_loss(params):
-    """
-    최종 파라미터를 사용해 validation (테스트) 데이터에 대한 loss를 계산합니다.
-    """
-    idx = 0
-    W1 = tf.reshape(params[idx: idx + D * hidden_dim], (D, hidden_dim))
-    idx += D * hidden_dim
-    b1 = tf.reshape(params[idx: idx + hidden_dim], (hidden_dim,))
-    idx += hidden_dim
-    W2 = tf.reshape(params[idx: idx + hidden_dim * num_classes], (hidden_dim, num_classes))
-    idx += hidden_dim * num_classes
-    b2 = tf.reshape(params[idx: idx + num_classes], (num_classes,))
+# def compute_validation_loss(params):
+#     """
+#     최종 파라미터를 사용해 validation (테스트) 데이터에 대한 loss를 계산합니다.
+#     """
+#     idx = 0
+#     W1 = tf.reshape(params[idx: idx + D * hidden_dim], (D, hidden_dim))
+#     idx += D * hidden_dim
+#     b1 = tf.reshape(params[idx: idx + hidden_dim], (hidden_dim,))
+#     idx += hidden_dim
+#     W2 = tf.reshape(params[idx: idx + hidden_dim * num_classes], (hidden_dim, num_classes))
+#     idx += hidden_dim * num_classes
+#     b2 = tf.reshape(params[idx: idx + num_classes], (num_classes,))
     
-    hidden = tf.nn.relu(tf.matmul(X_test_tf, W1) + b1)
-    logits = tf.matmul(hidden, W2) + b2
-    loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_test_tf, logits=logits))
-    return loss
+#     hidden = tf.nn.relu(tf.matmul(X_test_tf, W1) + b1)
+#     logits = tf.matmul(hidden, W2) + b2
+#     loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_test_tf, logits=logits))
+#     return loss
 
-def value_and_gradients_function(params):
-    """
-    미니배치를 사용하여 loss와 gradient를 함께 계산합니다.
-    tfp.optimizer.lbfgs_minimize에서 요구하는 형태입니다.
-    """
-    with tf.GradientTape() as tape:
-        tape.watch(params)
-        loss = neural_net_loss_minibatch(params)
-    grad = tape.gradient(loss, params)
-    return loss, grad
+# def value_and_gradients_function(params):
+#     """
+#     미니배치를 사용하여 loss와 gradient를 함께 계산합니다.
+#     tfp.optimizer.lbfgs_minimize에서 요구하는 형태입니다.
+#     """
+#     with tf.GradientTape() as tape:
+#         tape.watch(params)
+#         loss = neural_net_loss_minibatch(params)
+#     grad = tape.gradient(loss, params)
+#     return loss, grad
 
-# 학습 시작 시간 측정
-start_time = time.time()
+# # 학습 시작 시간 측정
+# start_time = time.time()
 
-# L-BFGS 최적화 수행 (미니배치)
-results = tfp.optimizer.lbfgs_minimize(
-    value_and_gradients_function=value_and_gradients_function,
-    initial_position=tf.convert_to_tensor(init_params, dtype=tf.float32),
-    max_iterations=100
-)
+# # L-BFGS 최적화 수행 (미니배치)
+# results = tfp.optimizer.lbfgs_minimize(
+#     value_and_gradients_function=value_and_gradients_function,
+#     initial_position=tf.convert_to_tensor(init_params, dtype=tf.float32),
+#     max_iterations=100
+# )
 
-# 학습 종료 시간 측정
-end_time = time.time()
-training_time = end_time - start_time
+# # 학습 종료 시간 측정
+# end_time = time.time()
+# training_time = end_time - start_time
 
-# 최적화 결과로 최종 파라미터 추출
-opt_params = results.position
+# # 최적화 결과로 최종 파라미터 추출
+# opt_params = results.position
 
-# 최종 미니배치 기반 training loss와 validation loss 계산
-final_train_loss = neural_net_loss_minibatch(opt_params).numpy()
-final_val_loss = compute_validation_loss(opt_params).numpy()
+# # 최종 미니배치 기반 training loss와 validation loss 계산
+# final_train_loss = neural_net_loss_minibatch(opt_params).numpy()
+# final_val_loss = compute_validation_loss(opt_params).numpy()
 
-print("Final Training Loss (mini-batch): {:.4f}".format(final_train_loss))
-print("Final Validation Loss: {:.4f}".format(final_val_loss))
-print("Total Iterations: {}".format(results.num_iterations))
-print("Training time: {:.2f} seconds".format(training_time))
+# print("Final Training Loss (mini-batch): {:.4f}".format(final_train_loss))
+# print("Final Validation Loss: {:.4f}".format(final_val_loss))
+# print("Total Iterations: {}".format(results.num_iterations))
+# print("Training time: {:.2f} seconds".format(training_time))
