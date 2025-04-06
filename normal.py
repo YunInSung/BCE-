@@ -24,14 +24,14 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # '2' 또는 '3'으로 설정하면 IN
 beta1 = 0.9
 beta2 = 0.999
 adam_epsilon = 1e-8
-split_num = 60
+split_num = 120
 adam_mini_batch = 100
 iterator = 10
 Goal_loss = 0.01
 
 
 # 상수 및 데이터셋 설정
-N = 600000         # 데이터 샘플 수
+N = 1200000         # 데이터 샘플 수
 D = 8            # 입력 차원
 num_classes = 6 # 클래스 수
 prop = 0.1
