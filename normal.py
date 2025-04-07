@@ -108,7 +108,7 @@ for X_fold, y_fold in folds:
 N = X_train_scaled.shape[0]
 hidden_dim = int(D * 2)
 epsilon = 1e-16
-N_float = tf.cast(N, tf.float32)
+# N_float = tf.cast(N, tf.float32)
 # batch_size = int(N/adam_mini_batch)
 batch_size = 128
 steps_per_epoch = math.ceil(N / batch_size)
@@ -143,7 +143,7 @@ def relu_deriv2(x, alpha=0.001):
 # --- 최적화를 위한 tf.function 데코레이터 적용 ---
 
 @tf.function
-def grad_W2_func_r_tf_batch(h, row, d2Z2, A1i):
+def grad_W2_func_r_tf_batch(h, row, d2Z2, A1i, N_float):
     """
     h:     공통 입력 텐서, shape = (80, 5000)
     d2Z2:  전체 d2Z2 텐서, shape = (p, 5000)
@@ -172,7 +172,7 @@ def grad_W2_func_r_tf_batch(h, row, d2Z2, A1i):
     return matrix
 
 @tf.function
-def H_matirx2_r_tf_batch(h, row, d2Z2, A1i, grad_W2_r):
+def H_matirx2_r_tf_batch(row, d2Z2, A1i, grad_W2_r, N_float):
     """
     벡터화된 연산을 사용하여, 각 배치에 대해 H 행렬을 계산.
     A1i: (81,5000) → out_dim = 81.
@@ -195,7 +195,7 @@ def H_matirx2_r_tf_batch(h, row, d2Z2, A1i, grad_W2_r):
 
 
 @tf.function
-def grad_W1_func_r_tf(theta, X, Xi):
+def grad_W1_func_r_tf(theta, X, Xi, N_float):
     """
     theta: (B, M)
     X:     (D, M)
@@ -215,7 +215,7 @@ def grad_W1_func_r_tf(theta, X, Xi):
     return matrix
 
 @tf.function
-def H_matirx1_r_tf(theta, X, Xi, grad_W1_r):
+def H_matirx1_r_tf(theta, Xi, grad_W1_r, N_float):
     """
     theta: (B,M), X: (D,M), Xi: (D+1,M), grad_W1_r: (B,D+1,D)
     출력: (B, D+1, D+1)
@@ -238,6 +238,7 @@ def P_matrix_tf(X, Y, W1, b1, W2, b2, learn):
     p = tf.shape(Y)[0]      # num_classes
     m = tf.shape(W1)[0]     # hidden_dim
     n = tf.shape(X)[0]      # 입력 차원 D
+    N_float = tf.cast(tf.shape(X)[1], tf.float32)
 
     Z1 = tf.matmul(W1, X) + b1         # (m,N)
     A1 = tf.nn.leaky_relu(Z1, alpha=0.001)
@@ -245,13 +246,13 @@ def P_matrix_tf(X, Y, W1, b1, W2, b2, learn):
     y_pred = tf.transpose(tf.nn.softmax(tf.transpose(Z2)))
     dZ2 = y_pred - Y
     d2Z2 = y_pred - tf.square(y_pred)
-    dW2 = tf.matmul(dZ2, tf.transpose(A1)) / tf.cast(N, tf.float32)
-    db2 = tf.reduce_sum(dZ2, axis=1, keepdims=True) / tf.cast(N, tf.float32)
+    dW2 = tf.matmul(dZ2, tf.transpose(A1)) / N_float
+    db2 = tf.reduce_sum(dZ2, axis=1, keepdims=True) / N_float
     dA1 = tf.matmul(tf.transpose(W2), dZ2)
     Z1_deriv = tf.where(Z1>=0, tf.ones_like(Z1), 0.001*tf.ones_like(Z1))
     dZ1 = dA1 * Z1_deriv
-    dW1 = tf.matmul(dZ1, tf.transpose(X)) / tf.cast(N, tf.float32)
-    db1 = tf.reduce_sum(dZ1, axis=1, keepdims=True) / tf.cast(N, tf.float32)
+    dW1 = tf.matmul(dZ1, tf.transpose(X)) / N_float
+    db1 = tf.reduce_sum(dZ1, axis=1, keepdims=True) / N_float
 
     prev_loss = -tf.reduce_mean(tf.reduce_sum(Y * tf.math.log(y_pred + 1e-8), axis=0))
     #######################################################################################
@@ -270,8 +271,8 @@ def P_matrix_tf(X, Y, W1, b1, W2, b2, learn):
     J_1 = term1 - term2
     theta = (tf.gather(J_1, hidden_rows) * tf.square(df1) +
              tf.gather(tf.matmul(tf.transpose(W2), dZ2), hidden_rows) * d2f1)
-    grad_W1_r = grad_W1_func_r_tf(theta, X, Xi)        # (m, D+1, D)
-    H_r       = H_matirx1_r_tf(theta, X, Xi, grad_W1_r)  # (m, D+1, D+1)
+    grad_W1_r = grad_W1_func_r_tf(theta, X, Xi, N_float)        # (m, D+1, D)
+    H_r       = H_matirx1_r_tf(theta, Xi, grad_W1_r, N_float)  # (m, D+1, D+1)
     pinv_A = tf.linalg.pinv(tf.transpose(H_r, perm=[0,2,1]))
     sol = tf.matmul(pinv_A, tf.expand_dims(GP1, axis=2))
     L_r = tf.squeeze(tf.transpose(sol, perm=[0,2,1]), axis=1)
@@ -285,8 +286,8 @@ def P_matrix_tf(X, Y, W1, b1, W2, b2, learn):
     GP2 = tf.concat([dW2, db2], axis=1)
 
     output_rows = tf.range(p)
-    grad_W2_r = grad_W2_func_r_tf_batch(A1, output_rows, d2Z2, A1i)
-    H_r2 = H_matirx2_r_tf_batch(A1, output_rows, d2Z2, A1i, grad_W2_r)
+    grad_W2_r = grad_W2_func_r_tf_batch(A1, output_rows, d2Z2, A1i, N_float)
+    H_r2 = H_matirx2_r_tf_batch(output_rows, d2Z2, A1i, grad_W2_r, N_float)
     pinv_A = tf.linalg.pinv(tf.transpose(H_r2, perm=[0,2,1]))
     sol2 = tf.matmul(pinv_A, tf.expand_dims(GP2, axis=2))
     L_r2 = tf.squeeze(tf.transpose(sol2, perm=[0, 2, 1]), axis=1)
@@ -329,7 +330,7 @@ def ret_weight_tf(transformed_folds_tensor, W1, b1, W2, b2, iter=1):
     for it in tf.range(iter):
         x_batch, y_batch = 0, 0
         shuffled_indices = np.random.permutation(num_folds)
-        learn = tf.constant(2.5, dtype=tf.float32)
+        learn = tf.constant(0.025, dtype=tf.float32)
         for idx in shuffled_indices:
             x_batch, y_batch = transformed_folds_tensor[idx]
             X = tf.transpose(x_batch)
@@ -337,8 +338,8 @@ def ret_weight_tf(transformed_folds_tensor, W1, b1, W2, b2, iter=1):
             cpW1, cpb1, cpW2, cpb2, learn = P_matrix_tf(X, Y, cpW1, cpb1, cpW2, cpb2, learn)
             if learn < 1e-5:
                 break
-            if learn < 2.5:
-                learn = tf.minimum(learn * 2, 2.5)
+            if learn < 0.5:
+                learn = tf.minimum(learn * 2, 0.5)
         Z1 = tf.matmul(cpW1, X_T) + cpb1
         h = tf.nn.leaky_relu(Z1, alpha=0.001)
         Z2 = tf.matmul(cpW2, h) + cpb2

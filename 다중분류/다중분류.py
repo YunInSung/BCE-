@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from sklearn.datasets import make_blobs
+from sklearn.model_selection import train_test_split
+from sklearn.datasets import make_classification
 import time
 
 N = 10000         # 데이터 샘플 수
@@ -175,7 +176,7 @@ def ret_weight(X, Y, W1, b1, W2, b2, loss0, iter=1) :
     continous = 0
     for it in range(0, iter) :
         ###############
-        if loss < 1e-4:
+        if loss < 1e-2:
             break
         cpW1, cpb1, cpW2, cpb2 = P_matrix(X, Y, prevW1, prevb1, prevW2, prevb2, learn)
         continous += 1
@@ -208,19 +209,26 @@ def ret_weight(X, Y, W1, b1, W2, b2, loss0, iter=1) :
 # for i in [35, 49, 72, 82, 85, 104, 106, 115, 129, 137] : 
 # for i in [137] : 
 # for i in range(151, 301) : 
-np.random.seed()
+np.random.seed(82)
 # 8차원 입력 데이터를 무작위 생성
 # 고정된 centers 배열을 정의하여 학습 및 검증 데이터에 동일하게 적용합니다.
-centers = np.array([
-    np.full(D, -5.0),
-    np.full(D, 0.0),
-    np.full(D, 5.0)
-])
+X, y = make_classification(n_samples=N,
+                           n_features=D,
+                           n_informative=D,   # 모든 특성이 정보를 가지도록
+                           n_redundant=0,
+                           n_repeated=0,
+                           n_classes=num_classes,
+                           n_clusters_per_class=1,  # 각 클래스당 하나의 클러스터
+                           flip_y=0,          # 라벨 노이즈 없음
+                           class_sep=2.0,     # 클래스 간 분리 정도
+                           random_state=42)
 
-# 학습 데이터 생성
-X, y = make_blobs(n_samples=N, n_features=D, centers=centers, cluster_std=1.5, random_state=42)
-y = y.reshape(-1, 1)
-
+# 필요하면 다시 numpy 배열로 변환할 수 있습니다.
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, stratify=y
+)
+X = X_train
+y = y_train.reshape(-1, 1)
 
 # 원-핫 인코딩 함수
 def one_hot(y, num_classes):
@@ -272,8 +280,8 @@ print("loss : : {:.6f}".format(loss_))
 
 
 # 3. Adam 하이퍼파라미터 설정
-lr = 0.25
-epochs = 400
+lr = 0.05
+epochs = 800
 beta1 = 0.9
 beta2 = 0.999
 epsilon = 1e-8
@@ -301,6 +309,9 @@ for epoch in range(1, epochs+1):
     
     # 손실 함수: 범주형 교차 엔트로피
     loss = -np.mean(np.sum(y_onehot * np.log(y_pred + 1e-8), axis=1))
+    if loss < 1e-2:
+        print(f"Epoch {epoch}, Loss: {loss:.6f}")
+        break
     loss_history.append(loss)
     
     # 역전파: 출력층
@@ -356,9 +367,8 @@ print("Adam 학습 코드 실행 시간: {:.4f} 초".format(end - start))
 print("학습 완료")
 
 # 검증 데이터 생성 및 평가 (학습 데이터와 동일한 centers를 사용)
-N_val = int(N * 0.5)
-X_val, y_val = make_blobs(n_samples=N_val, n_features=D, centers=centers, cluster_std=1.5, random_state=42)
-y_val = y_val.reshape(-1, 1)
+X_val = X_test
+y_val = y_test.reshape(-1, 1)
 y_val_onehot = one_hot(y_val, num_classes)
 
 Z1_val = X_val.dot(W1) + b1

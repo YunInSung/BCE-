@@ -290,7 +290,7 @@ def ret_weight(X, Y, W1, b1, W2, b2, W3, b3, loss0, iter=1) :
 # for i in [35, 49, 72, 82, 85, 104, 106, 115, 129, 137] : 
 # for i in [137] : 
 # for i in range(151, 301) : 
-np.random.seed()
+np.random.seed(82)
 # 8차원 입력 데이터를 무작위 생성
 # 고정된 centers 배열을 정의하여 학습 및 검증 데이터에 동일하게 적용합니다.
 X, y = make_classification(n_samples=N,
