@@ -8,11 +8,11 @@ import time
 N = 10000          # 데이터 샘플 수
 D = 12             # 입력 차원
 num_classes = 6   # 클래스 수
-hidden_dim1 = 24    # 첫 번째 은닉층 크기
+hidden_dim1 = 30    # 첫 번째 은닉층 크기
 hidden_dim2 = hidden_dim1     # 두 번째 은닉층 크기
 size = N
 epsilon = 1e-8
-iterator = 50
+iterator = 100
 ######################################################################################################
 ######################################################################################################
 ######################################################################################################
@@ -249,7 +249,7 @@ def ret_weight(X, Y, W1, b1, W2, b2, W3, b3, loss0, iter=1) :
     cpW3 = W3.copy()
     cpb3 = b3.copy()
     prevW1, prevb1, prevW2, prevb2, prevW3, prevb3 = cpW1, cpb1, cpW2, cpb2, cpW3, cpb3
-    learn = 0.0025
+    learn = 0.005
     continous = 0
     for it in range(0, iter) :
         ###############
@@ -271,10 +271,10 @@ def ret_weight(X, Y, W1, b1, W2, b2, W3, b3, loss0, iter=1) :
             continous = 0
             print(f'it : {it} - learn : {learn}')
             continue
-        if learn < 0.2 :
+        if learn < 0.15 :
             learn *= 2
-            if learn > 0.2 :
-                learn = 0.2
+            if learn > 0.15 :
+                learn = 0.15
         prevW1, prevb1, prevW2, prevb2, prevW3, prevb3 = cpW1, cpb1, cpW2, cpb2, cpW3, cpb3
         prev_loss = loss
     return prevW1, prevb1, prevW2, prevb2, prevW3, prevb3
@@ -376,7 +376,7 @@ print("loss : : {:.6f}".format(loss_))
 
 # Adam 하이퍼파라미터 설정
 lr = 0.05
-epochs = 600
+epochs = 1400
 beta1 = 0.9
 beta2 = 0.999
 epsilon = 1e-8
