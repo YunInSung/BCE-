@@ -5,14 +5,14 @@ from sklearn.model_selection import train_test_split
 from sklearn.datasets import make_classification
 import time
 
-N = 10000          # 데이터 샘플 수
-D = 12             # 입력 차원
+N = 25000          # 데이터 샘플 수
+D = 6             # 입력 차원
 num_classes = 6   # 클래스 수
-hidden_dim1 = 30    # 첫 번째 은닉층 크기
+hidden_dim1 = 12    # 첫 번째 은닉층 크기
 hidden_dim2 = hidden_dim1     # 두 번째 은닉층 크기
 size = N
 epsilon = 1e-8
-iterator = 100
+iterator = 500
 ######################################################################################################
 ######################################################################################################
 ######################################################################################################
@@ -271,10 +271,10 @@ def ret_weight(X, Y, W1, b1, W2, b2, W3, b3, loss0, iter=1) :
             continous = 0
             print(f'it : {it} - learn : {learn}')
             continue
-        if learn < 0.15 :
+        if learn < 0.3 :
             learn *= 2
-            if learn > 0.15 :
-                learn = 0.15
+            if learn > 0.3 :
+                learn = 0.3
         prevW1, prevb1, prevW2, prevb2, prevW3, prevb3 = cpW1, cpb1, cpW2, cpb2, cpW3, cpb3
         prev_loss = loss
     return prevW1, prevb1, prevW2, prevb2, prevW3, prevb3
@@ -299,9 +299,9 @@ X, y = make_classification(n_samples=N,
                            n_redundant=0,
                            n_repeated=0,
                            n_classes=num_classes,
-                           n_clusters_per_class=1,  # 각 클래스당 하나의 클러스터
+                           n_clusters_per_class=2,  # 각 클래스당 하나의 클러스터
                            flip_y=0,          # 라벨 노이즈 없음
-                           class_sep=2.0,     # 클래스 간 분리 정도
+                           class_sep=0.5,     # 클래스 간 분리 정도
                            random_state=42)
 
 # 필요하면 다시 numpy 배열로 변환할 수 있습니다.
@@ -376,7 +376,7 @@ print("loss : : {:.6f}".format(loss_))
 
 # Adam 하이퍼파라미터 설정
 lr = 0.05
-epochs = 1400
+epochs = 2000
 beta1 = 0.9
 beta2 = 0.999
 epsilon = 1e-8
